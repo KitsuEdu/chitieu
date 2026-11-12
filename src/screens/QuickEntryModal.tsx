@@ -84,7 +84,7 @@ export const QuickEntryModal: React.FC<QuickEntryModalProps> = ({
   const [note, setNote] = useState<string>('');
   const [selectedDate, setSelectedDate] = useState<Date>(new Date());
 
-  const [isAmountFocused, setIsAmountFocused] = useState<boolean>(true);
+  const [isAmountFocused, setIsAmountFocused] = useState<boolean>(false);
   const [isNoteFocused, setIsNoteFocused] = useState<boolean>(false);
   const [isWalletModalOpen, setIsWalletModalOpen] = useState<boolean>(false);
   const [isCategoryModalOpen, setIsCategoryModalOpen] = useState<boolean>(false);
@@ -125,7 +125,7 @@ export const QuickEntryModal: React.FC<QuickEntryModalProps> = ({
   // Animation mở / đóng modal
   useEffect(() => {
     if (visible) {
-      setIsAmountFocused(true);
+      setIsAmountFocused(false);
       setIsNoteFocused(false);
 
       if (initialPreset) {
@@ -422,6 +422,7 @@ export const QuickEntryModal: React.FC<QuickEntryModalProps> = ({
               style={styles.formRow}
               onPress={() => {
                 Keyboard.dismiss();
+                setIsAmountFocused(false);
                 setIsWalletModalOpen(true);
               }}
               activeOpacity={0.7}
@@ -496,6 +497,7 @@ export const QuickEntryModal: React.FC<QuickEntryModalProps> = ({
               style={styles.formRow}
               onPress={() => {
                 Keyboard.dismiss();
+                setIsAmountFocused(false);
                 setIsCategoryModalOpen(true);
               }}
               activeOpacity={0.7}
@@ -531,7 +533,7 @@ export const QuickEntryModal: React.FC<QuickEntryModalProps> = ({
                 }}
                 onBlur={() => {
                   setIsNoteFocused(false);
-                  setIsAmountFocused(true);
+                  setIsAmountFocused(false);
                 }}
                 returnKeyType="done"
                 onSubmitEditing={() => Keyboard.dismiss()}
@@ -577,8 +579,8 @@ export const QuickEntryModal: React.FC<QuickEntryModalProps> = ({
             </View>
           </ScrollView>
 
-          {/* Calculator Numpad (Pinned Bottom) */}
-          {!isNoteFocused && (
+          {/* Calculator Numpad (Chỉ hiện khi người dùng chủ động bấm vào ô Số tiền) */}
+          {isAmountFocused && !isNoteFocused && (
             <CalculatorNumpad
               expression={expression}
               evaluatedAmount={evaluatedAmount}
@@ -591,6 +593,20 @@ export const QuickEntryModal: React.FC<QuickEntryModalProps> = ({
               onPressChip={handleChip}
               onSave={handleSave}
             />
+          )}
+
+          {/* Nút Lưu cố định khi không mở bàn phím số */}
+          {!isAmountFocused && !isNoteFocused && (
+            <View style={styles.bottomSaveContainer}>
+              <TouchableOpacity
+                style={styles.bottomSaveBtn}
+                onPress={handleSave}
+                activeOpacity={0.8}
+              >
+                <Check size={20} color="#FFFFFF" strokeWidth={2.5} style={{ marginRight: 8 }} />
+                <Text style={styles.bottomSaveText}>Lưu</Text>
+              </TouchableOpacity>
+            </View>
           )}
         </KeyboardAvoidingView>
 
@@ -839,5 +855,26 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     color: '#34D399',
     paddingHorizontal: 8,
+  },
+  bottomSaveContainer: {
+    paddingHorizontal: 16,
+    paddingTop: 12,
+    paddingBottom: Platform.OS === 'ios' ? 24 : 16,
+    backgroundColor: '#12141F',
+    borderTopWidth: 1,
+    borderTopColor: 'rgba(255, 255, 255, 0.06)',
+  },
+  bottomSaveBtn: {
+    height: 48,
+    borderRadius: 12,
+    backgroundColor: '#8B5CF6',
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  bottomSaveText: {
+    color: '#FFFFFF',
+    fontSize: 16,
+    fontWeight: '700',
   },
 });

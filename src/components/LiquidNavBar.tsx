@@ -347,8 +347,6 @@ export const LiquidNavBar: React.FC<LiquidNavBarProps> = ({
         style={[styles.ball, ballAnimatedStyle]}
         pointerEvents="none"
       >
-        {/* Highlight bóng nhẹ tạo khối 3D trên đỉnh quả bóng */}
-        <View style={styles.ballHighlight} />
         {renderActiveIcon(activeIndex)}
       </Animated.View>
 
@@ -455,15 +453,6 @@ const styles = StyleSheet.create({
         elevation: 10,
       },
     }),
-  },
-  ballHighlight: {
-    position: 'absolute',
-    top: 3,
-    left: 8,
-    right: 8,
-    height: 12,
-    borderRadius: 6,
-    backgroundColor: 'rgba(255, 255, 255, 0.28)',
   },
   tabsRow: {
     flexDirection: 'row',
