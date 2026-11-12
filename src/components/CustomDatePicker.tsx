@@ -22,6 +22,7 @@ import {
   X,
   Calendar as CalendarIcon,
   Check,
+  ChevronDown,
 } from 'lucide-react-native';
 import * as Haptics from 'expo-haptics';
 
@@ -122,9 +123,14 @@ export const CustomDatePicker: React.FC<CustomDatePickerProps> = ({
     return new Date().getDate();
   });
 
+  // Internal state for Quick Month/Year selector popup
+  const [isMonthYearPopupOpen, setIsMonthYearPopupOpen] = useState<boolean>(false);
+  const [popupYear, setPopupYear] = useState<number>(viewYear);
+
   // Sync internal state when modal becomes visible or value prop changes
   useEffect(() => {
     if (visible) {
+      setIsMonthYearPopupOpen(false);
       if (mode === 'DATE') {
         const d =
           value instanceof Date
@@ -274,8 +280,8 @@ export const CustomDatePicker: React.FC<CustomDatePickerProps> = ({
       });
     }
 
-    // 3. Days from next month to complete rows (multiples of 7, up to 35 or 42)
-    const totalCells = days.length <= 35 ? 35 : 42;
+    // 3. Days from next month to complete rows (Cố định chuẩn 42 ô = 6 hàng x 7 ngày để không lệch chiều cao)
+    const totalCells = 42;
     const remaining = totalCells - days.length;
     for (let d = 1; d <= remaining; d++) {
       const m = viewMonth === 11 ? 0 : viewMonth + 1;
@@ -365,7 +371,7 @@ export const CustomDatePicker: React.FC<CustomDatePickerProps> = ({
                 </TouchableOpacity>
               </View>
 
-              {/* Month & Year Navigation Header */}
+              {/* Month & Year Navigation Header (Bấm vào Tháng/Năm để mở popup chọn nhanh) */}
               <View style={styles.monthNavRow}>
                 <TouchableOpacity
                   style={styles.navArrowBtn}
@@ -375,9 +381,20 @@ export const CustomDatePicker: React.FC<CustomDatePickerProps> = ({
                   <ChevronLeft size={20} color="#CBD5E1" />
                 </TouchableOpacity>
 
-                <Text style={styles.navMonthYearText}>
-                  {MONTH_NAMES[viewMonth]}, {viewYear}
-                </Text>
+                <TouchableOpacity
+                  style={styles.navMonthYearBtn}
+                  onPress={() => {
+                    triggerHaptic();
+                    setPopupYear(viewYear);
+                    setIsMonthYearPopupOpen(true);
+                  }}
+                  activeOpacity={0.7}
+                >
+                  <Text style={styles.navMonthYearText}>
+                    {MONTH_NAMES[viewMonth]}, {viewYear}
+                  </Text>
+                  <ChevronDown size={14} color="#A855F7" style={{ marginLeft: 5 }} />
+                </TouchableOpacity>
 
                 <TouchableOpacity
                   style={styles.navArrowBtn}
@@ -461,6 +478,90 @@ export const CustomDatePicker: React.FC<CustomDatePickerProps> = ({
                   Chọn ngày {pad(selectedDate.getDate())}/{pad(selectedDate.getMonth() + 1)}/{selectedDate.getFullYear()}
                 </Text>
               </TouchableOpacity>
+
+              {/* Popup Chọn Nhanh Tháng & Năm (Thay thế nhảy tháng thủ công) */}
+              {isMonthYearPopupOpen && (
+                <View style={styles.monthYearPopupOverlay}>
+                  <View style={styles.monthYearPopupCard}>
+                    {/* Header: Chuyển năm và nút đóng */}
+                    <View style={styles.popupHeader}>
+                      <View style={styles.popupYearNav}>
+                        <TouchableOpacity
+                          style={styles.popupNavArrowBtn}
+                          onPress={() => {
+                            triggerHaptic();
+                            setPopupYear((y) => y - 1);
+                          }}
+                          activeOpacity={0.7}
+                        >
+                          <ChevronLeft size={18} color="#CBD5E1" />
+                        </TouchableOpacity>
+
+                        <Text style={styles.popupYearText}>Năm {popupYear}</Text>
+
+                        <TouchableOpacity
+                          style={styles.popupNavArrowBtn}
+                          onPress={() => {
+                            triggerHaptic();
+                            setPopupYear((y) => y + 1);
+                          }}
+                          activeOpacity={0.7}
+                        >
+                          <ChevronRight size={18} color="#CBD5E1" />
+                        </TouchableOpacity>
+                      </View>
+
+                      <TouchableOpacity
+                        style={styles.popupCloseBtn}
+                        onPress={() => {
+                          triggerHaptic();
+                          setIsMonthYearPopupOpen(false);
+                        }}
+                        activeOpacity={0.7}
+                        hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                      >
+                        <X size={16} color="#94A3B8" />
+                      </TouchableOpacity>
+                    </View>
+
+                    {/* Lưới 12 tháng */}
+                    <View style={styles.popupMonthsGrid}>
+                      {MONTH_NAMES.map((name, idx) => {
+                        const isSelected = popupYear === viewYear && viewMonth === idx;
+                        const isCurrentMonth =
+                          today.getFullYear() === popupYear && today.getMonth() === idx;
+
+                        return (
+                          <TouchableOpacity
+                            key={`popup-month-${idx}`}
+                            style={[
+                              styles.popupMonthCell,
+                              isSelected && styles.popupMonthCellSelected,
+                              !isSelected && isCurrentMonth && styles.popupMonthCellCurrent,
+                            ]}
+                            onPress={() => {
+                              triggerHaptic();
+                              setViewYear(popupYear);
+                              setViewMonth(idx);
+                              setIsMonthYearPopupOpen(false);
+                            }}
+                            activeOpacity={0.7}
+                          >
+                            <Text
+                              style={[
+                                styles.popupMonthText,
+                                isSelected && styles.popupMonthTextSelected,
+                              ]}
+                            >
+                              {name}
+                            </Text>
+                          </TouchableOpacity>
+                        );
+                      })}
+                    </View>
+                  </View>
+                </View>
+              )}
             </View>
           )}
 
@@ -628,6 +729,8 @@ const styles = StyleSheet.create({
   },
   contentBody: {
     paddingBottom: 4,
+    position: 'relative',
+    minHeight: 416,
   },
 
   // Quick Presets
@@ -658,7 +761,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
     marginBottom: 14,
-    paddingHorizontal: 6,
+    paddingHorizontal: 2,
   },
   navArrowBtn: {
     width: 34,
@@ -669,6 +772,16 @@ const styles = StyleSheet.create({
     borderColor: 'rgba(255, 255, 255, 0.06)',
     justifyContent: 'center',
     alignItems: 'center',
+  },
+  navMonthYearBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 10,
+    backgroundColor: '#1A1D2B',
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.08)',
   },
   navMonthYearText: {
     fontSize: 15,
@@ -692,10 +805,11 @@ const styles = StyleSheet.create({
     color: '#F43F5E',
   },
 
-  // Calendar Days Grid
+  // Calendar Days Grid (Cố định chuẩn 6 hàng = 264px để khi đổi tháng không bị lệch)
   daysGrid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
+    height: 264,
     marginBottom: 16,
   },
   dayCell: {
@@ -829,6 +943,93 @@ const styles = StyleSheet.create({
     color: '#CBD5E1',
   },
   dayOfMonthTextSelected: {
+    color: '#FFFFFF',
+    fontWeight: '700',
+  },
+
+  // Quick Month/Year Selector Overlay Styles
+  monthYearPopupOverlay: {
+    ...StyleSheet.absoluteFill,
+    backgroundColor: 'rgba(10, 12, 20, 0.94)',
+    borderRadius: 18,
+    zIndex: 99,
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 8,
+  },
+  monthYearPopupCard: {
+    width: '100%',
+    backgroundColor: '#161926',
+    borderRadius: 18,
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.1)',
+    padding: 14,
+  },
+  popupHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 14,
+  },
+  popupYearNav: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  popupNavArrowBtn: {
+    width: 32,
+    height: 32,
+    borderRadius: 8,
+    backgroundColor: '#1A1D2B',
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.08)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  popupYearText: {
+    fontSize: 16,
+    fontWeight: '800',
+    color: '#F8FAFC',
+    minWidth: 80,
+    textAlign: 'center',
+  },
+  popupCloseBtn: {
+    width: 30,
+    height: 30,
+    borderRadius: 15,
+    backgroundColor: 'rgba(255, 255, 255, 0.06)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  popupMonthsGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+  },
+  popupMonthCell: {
+    width: '31%',
+    height: 44,
+    borderRadius: 10,
+    backgroundColor: '#1A1D2B',
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.06)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  popupMonthCellSelected: {
+    backgroundColor: '#8B5CF6',
+    borderColor: '#A855F7',
+  },
+  popupMonthCellCurrent: {
+    borderWidth: 1,
+    borderColor: 'rgba(168, 85, 247, 0.5)',
+  },
+  popupMonthText: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#CBD5E1',
+  },
+  popupMonthTextSelected: {
     color: '#FFFFFF',
     fontWeight: '700',
   },
