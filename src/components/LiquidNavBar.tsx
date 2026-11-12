@@ -122,6 +122,41 @@ export const LiquidNavBar: React.FC<LiquidNavBarProps> = ({
     }
   };
 
+  // Hàm kích hoạt hiệu ứng nảy dọc tại chỗ (Bay vồng lên -> Rơi lún sâu -> Nảy về cân bằng)
+  const triggerVerticalBounce = () => {
+    ballY.value = withSequence(
+      withTiming(JUMP_PEAK_Y, {
+        duration: 240,
+        easing: Easing.out(Easing.cubic),
+      }),
+      withTiming(IMPACT_DENT_Y, {
+        duration: 220,
+        easing: Easing.in(Easing.quad),
+      }),
+      withTiming(RESTING_Y, {
+        duration: 190,
+        easing: Easing.out(Easing.back(1.2)),
+      })
+    );
+
+    ballScaleX.value = withSequence(
+      withTiming(0.92, { duration: 240, easing: Easing.out(Easing.cubic) }),
+      withTiming(1.16, { duration: 220, easing: Easing.in(Easing.quad) }),
+      withTiming(1, { duration: 190, easing: Easing.out(Easing.back(1.2)) })
+    );
+
+    ballScaleY.value = withSequence(
+      withTiming(1.08, { duration: 240, easing: Easing.out(Easing.cubic) }),
+      withTiming(0.84, { duration: 220, easing: Easing.in(Easing.quad) }),
+      withTiming(1, { duration: 190, easing: Easing.out(Easing.back(1.2)) })
+    );
+
+    triggerHaptic();
+    setTimeout(() => {
+      triggerHaptic();
+    }, 460);
+  };
+
   useEffect(() => {
     const targetX = getCenterForIndex(activeIndex, barWidth);
 
@@ -156,51 +191,28 @@ export const LiquidNavBar: React.FC<LiquidNavBarProps> = ({
       easing: Easing.bezier(0.25, 0.1, 0.25, 1),
     });
 
-    // 2. Tọa độ dọc ballY: Bay vồng (-28) -> Rơi lún sâu (26) -> Nảy về cân bằng (14)
-    ballY.value = withSequence(
-      withTiming(JUMP_PEAK_Y, {
-        duration: 240,
-        easing: Easing.out(Easing.cubic),
-      }),
-      withTiming(IMPACT_DENT_Y, {
-        duration: 220,
-        easing: Easing.in(Easing.quad),
-      }),
-      withTiming(RESTING_Y, {
-        duration: 190,
-        easing: Easing.out(Easing.back(1.2)),
-      })
-    );
+    // 2. Tọa độ dọc & Squash Stretch
+    triggerVerticalBounce();
 
-    // 3. Hiệu ứng biến dạng Squash & Stretch theo nhịp va chạm
-    ballScaleX.value = withSequence(
-      withTiming(0.92, { duration: 240, easing: Easing.out(Easing.cubic) }),
-      withTiming(1.16, { duration: 220, easing: Easing.in(Easing.quad) }),
-      withTiming(1, { duration: 190, easing: Easing.out(Easing.back(1.2)) })
-    );
-
-    ballScaleY.value = withSequence(
-      withTiming(1.08, { duration: 240, easing: Easing.out(Easing.cubic) }),
-      withTiming(0.84, { duration: 220, easing: Easing.in(Easing.quad) }),
-      withTiming(1, { duration: 190, easing: Easing.out(Easing.back(1.2)) })
-    );
-
-    // 4. Mờ dần icon ở tab mới & hiện lại icon ở tab cũ
+    // 3. Mờ dần icon ở tab mới & hiện lại icon ở tab cũ
     for (let i = 0; i < TOTAL_TABS; i++) {
       getTabOpacity(i).value = withTiming(i === activeIndex ? 0 : 1, {
         duration: 220,
       });
     }
-
-    // Phản hồi rung haptic lúc cất cánh & lúc tiếp xúc mặt đàn hồi
-    triggerHaptic();
-    setTimeout(() => {
-      triggerHaptic();
-    }, 460);
   }, [activeIndex, barWidth]);
 
   // Xử lý chạm tab
   const handlePressTab = (idx: number) => {
+    if (idx === activeIndex) {
+      // Khi ấn lại vào tab đang active -> nảy lên và rơi xuống theo đúng cơ chế vật lý
+      if (idx === 2) {
+        onPressPlus?.();
+      }
+      triggerVerticalBounce();
+      return;
+    }
+
     triggerHaptic();
 
     let targetTab: MainTabType = 'OVERVIEW';
