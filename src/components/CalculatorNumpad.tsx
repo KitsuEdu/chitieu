@@ -15,8 +15,6 @@ import * as Haptics from 'expo-haptics';
 import {
   Delete,
   ChevronRight,
-  Sparkles,
-  MessageSquareText,
 } from 'lucide-react-native';
 import { colors } from '../theme/colors';
 import { getSmartChips } from '../utils/calculator';
@@ -138,7 +136,7 @@ export const CalculatorNumpad: React.FC<CalculatorNumpadProps> = ({
 
   return (
     <View style={styles.container}>
-      {/* 1. Action Bar: Nút Lưu (70%) + 2 Icon tròn */}
+      {/* 1. Action Bar: Nút Lưu full màn hình ngang */}
       <View style={styles.actionBar}>
         <Pressable
           style={[
@@ -157,22 +155,6 @@ export const CalculatorNumpad: React.FC<CalculatorNumpadProps> = ({
           >
             Lưu
           </Text>
-        </Pressable>
-
-        <Pressable
-          style={styles.circleActionButton}
-          onPressIn={triggerHaptic}
-          onPress={onAttachImage}
-        >
-          <Sparkles size={19} color="#34D399" />
-        </Pressable>
-
-        <Pressable
-          style={styles.circleActionButton}
-          onPressIn={triggerHaptic}
-          onPress={onFocusNote}
-        >
-          <MessageSquareText size={19} color="#34D399" />
         </Pressable>
       </View>
 
@@ -300,13 +282,11 @@ const styles = StyleSheet.create({
     borderTopColor: 'rgba(255, 255, 255, 0.07)',
   },
   actionBar: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
+    width: '100%',
     marginBottom: 10,
   },
   saveButton: {
-    flex: 1,
+    width: '100%',
     height: 46,
     borderRadius: 23,
     justifyContent: 'center',
@@ -327,16 +307,6 @@ const styles = StyleSheet.create({
   },
   saveButtonTextDisabled: {
     color: '#64748B',
-  },
-  circleActionButton: {
-    width: 46,
-    height: 46,
-    borderRadius: 23,
-    backgroundColor: '#161926',
-    borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.07)',
-    justifyContent: 'center',
-    alignItems: 'center',
   },
   chipsRow: {
     marginBottom: 12,

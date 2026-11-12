@@ -94,9 +94,9 @@ export function hasPendingOperator(expr: string): boolean {
 }
 
 /**
- * Formats a mathematical expression with dot separators (e.g. "35000 + 15000" -> "35.000 + 15.000")
+ * Formats a mathematical expression with comma separators (e.g. "35000 + 15000" -> "35,000 + 15,000")
  */
-export function formatExpressionWithDots(expr: string): string {
+export function formatExpressionWithCommas(expr: string): string {
   if (!expr || expr === '0') return '0';
 
   const parts = expr.split(/([+\-×÷*/])/);
@@ -111,17 +111,20 @@ export function formatExpressionWithDots(expr: string): string {
 
       // Tách phần nguyên và phần thập phân (nếu có)
       const [intPart, decPart] = trimmed.split('.');
-      const formattedInt = (intPart || '0').replace(/\B(?=(\d{3})+(?!\d))/g, '.');
+      const formattedInt = (intPart || '0').replace(/\B(?=(\d{3})+(?!\d))/g, ',');
       return decPart !== undefined ? `${formattedInt}.${decPart}` : formattedInt;
     })
     .join('')
     .trim();
 }
 
+/** Alias tương thích */
+export const formatExpressionWithDots = formatExpressionWithCommas;
+
 /**
  * Generates smart suggestions for quick amounts.
- * - If expr evaluates to 0: [20.000, 35.000, 50.000, 100.000, 500.000]
- * - If typing digits (e.g. 45): [45.000, 450.000, 4.500.000]
+ * - If expr evaluates to 0: [20,000, 35,000, 50,000, 100,000, 500,000]
+ * - If typing digits (e.g. 45): [45,000, 450,000, 4,500,000]
  */
 export function getSmartChips(expr: string): { label: string; value: number }[] {
   // Trích xuất số cuối cùng đang nhập nếu có toán tử
@@ -131,11 +134,11 @@ export function getSmartChips(expr: string): { label: string; value: number }[] 
 
   if (!num || num <= 0) {
     return [
-      { label: '20.000', value: 20000 },
-      { label: '35.000', value: 35000 },
-      { label: '50.000', value: 50000 },
-      { label: '100.000', value: 100000 },
-      { label: '500.000', value: 500000 },
+      { label: '20,000', value: 20000 },
+      { label: '35,000', value: 35000 },
+      { label: '50,000', value: 50000 },
+      { label: '100,000', value: 100000 },
+      { label: '500,000', value: 500000 },
     ];
   }
 
@@ -144,17 +147,17 @@ export function getSmartChips(expr: string): { label: string; value: number }[] 
     const v2 = num * 10000;
     const v3 = num * 100000;
     return [
-      { label: formatExpressionWithDots(v1.toString()), value: v1 },
-      { label: formatExpressionWithDots(v2.toString()), value: v2 },
-      { label: formatExpressionWithDots(v3.toString()), value: v3 },
+      { label: formatExpressionWithCommas(v1.toString()), value: v1 },
+      { label: formatExpressionWithCommas(v2.toString()), value: v2 },
+      { label: formatExpressionWithCommas(v3.toString()), value: v3 },
     ];
   }
 
   // Số đã >= 1000 (VD: gõ 50000)
   return [
-    { label: formatExpressionWithDots(num.toString()), value: num },
-    { label: formatExpressionWithDots((num * 10).toString()), value: num * 10 },
-    { label: formatExpressionWithDots((num * 100).toString()), value: num * 100 },
+    { label: formatExpressionWithCommas(num.toString()), value: num },
+    { label: formatExpressionWithCommas((num * 10).toString()), value: num * 10 },
+    { label: formatExpressionWithCommas((num * 100).toString()), value: num * 100 },
   ];
 }
 

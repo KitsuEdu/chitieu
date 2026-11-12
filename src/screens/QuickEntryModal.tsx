@@ -41,7 +41,7 @@ import { WalletSelectModal } from '../components/WalletSelectModal';
 import { CategorySelectModal } from '../components/CategorySelectModal';
 import {
   evaluateExpression,
-  formatExpressionWithDots,
+  formatExpressionWithCommas,
   hasPendingOperator,
   formatVietnameseDate,
 } from '../utils/calculator';
@@ -439,7 +439,7 @@ export const QuickEntryModal: React.FC<QuickEntryModalProps> = ({
                   numberOfLines={1}
                   adjustsFontSizeToFit
                 >
-                  {formatExpressionWithDots(expression)}
+                  {formatExpressionWithCommas(expression)}
                 </Text>
                 <View
                   style={[
@@ -545,13 +545,6 @@ export const QuickEntryModal: React.FC<QuickEntryModalProps> = ({
               onPressEqual={handleEqual}
               onPressChip={handleChip}
               onSave={handleSave}
-              onFocusNote={() => noteInputRef.current?.focus()}
-              onAttachImage={() =>
-                Alert.alert(
-                  'Đính kèm hoá đơn',
-                  'Tính năng quét / lưu ảnh hoá đơn vào giao dịch sắp ra mắt.'
-                )
-              }
             />
           )}
         </KeyboardAvoidingView>

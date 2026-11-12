@@ -26,8 +26,8 @@ export interface CurrencyInputProps extends Omit<TextInputProps, 'value' | 'onCh
 }
 
 /**
- * Format chuỗi ký tự hoặc số thành định dạng phân tách hàng nghìn bằng dấu chấm (.)
- * Ví dụ: 1000 -> "1.000", 1500000 -> "1.500.000"
+ * Format chuỗi ký tự hoặc số thành định dạng phân tách hàng nghìn bằng dấu phẩy (,)
+ * Ví dụ: 1000 -> "1,000", 1500000 -> "1,500,000"
  * Trả về chuỗi rỗng nếu giá trị là 0, undefined, null để hiển thị placeholder tự nhiên
  */
 export function formatCurrencyVND(val: number | string | undefined | null): string {
@@ -39,11 +39,11 @@ export function formatCurrencyVND(val: number | string | undefined | null): stri
   if (!digitsOnly || digitsOnly === '0') return '';
   const normalized = digitsOnly.replace(/^0+/, '');
   if (!normalized) return '';
-  return normalized.replace(/\B(?=(\d{3})+(?!\d))/g, '.');
+  return normalized.replace(/\B(?=(\d{3})+(?!\d))/g, ',');
 }
 
 /**
- * Chuyển chuỗi định dạng (VD: "1.500.000") thành số nguyên numeric (VD: 1500000)
+ * Chuyển chuỗi định dạng (VD: "1,500,000") thành số nguyên numeric (VD: 1500000)
  */
 export function parseCurrencyVND(val: string | undefined | null): number {
   if (!val) return 0;
@@ -111,7 +111,7 @@ export const CurrencyInput: React.FC<CurrencyInputProps> = ({
         return;
       }
 
-      const nextFormatted = normalized.replace(/\B(?=(\d{3})+(?!\d))/g, '.');
+      const nextFormatted = normalized.replace(/\B(?=(\d{3})+(?!\d))/g, ',');
       const numericVal = parseInt(normalized, 10) || 0;
 
       setFormattedText(nextFormatted);

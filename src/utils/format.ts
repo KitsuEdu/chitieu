@@ -1,11 +1,11 @@
 /**
- * Định dạng số tiền sang định dạng tiền tệ VND (ví dụ: 150.000 VND)
+ * Định dạng số tiền sang định dạng tiền tệ VND (ví dụ: 150,000 VND)
  */
 export function formatVND(amount: number): string {
   if (isNaN(amount)) return '0 VND';
   const formatted = Math.abs(amount)
     .toString()
-    .replace(/\B(?=(\d{3})+(?!\d))/g, '.');
+    .replace(/\B(?=(\d{3})+(?!\d))/g, ',');
   return `${formatted} VND`;
 }
 

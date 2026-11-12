@@ -914,7 +914,7 @@ export const WalletsScreen: React.FC<WalletsScreenProps> = ({ onWalletsUpdated }
                   <CurrencyInput
                     value={creditLimit}
                     onChangeValue={setCreditLimit}
-                    placeholder="VD: 10.000.000"
+                    placeholder="VD: 10,000,000"
                   />
 
                   <Text style={styles.fieldLabel}>Dư nợ ban đầu (Số tiền đang nợ) *</Text>
@@ -929,14 +929,13 @@ export const WalletsScreen: React.FC<WalletsScreenProps> = ({ onWalletsUpdated }
                       <Text style={styles.fieldLabel} numberOfLines={1}>
                         Ngày chốt sao kê
                       </Text>
-                      <TextInput
-                        style={styles.textInput}
+                      <CurrencyInput
+                        value={statementDateStr ? parseInt(statementDateStr, 10) : ''}
+                        onChangeValue={(val) => setStatementDateStr(val > 0 ? val.toString() : '')}
                         placeholder="VD: 25"
-                        placeholderTextColor={colors.textMuted}
-                        keyboardType="numeric"
+                        suffix=""
                         maxLength={2}
-                        value={statementDateStr}
-                        onChangeText={setStatementDateStr}
+                        allowClear={false}
                       />
                     </View>
 
@@ -944,14 +943,13 @@ export const WalletsScreen: React.FC<WalletsScreenProps> = ({ onWalletsUpdated }
                       <Text style={styles.fieldLabel} numberOfLines={1}>
                         Hạn thanh toán
                       </Text>
-                      <TextInput
-                        style={styles.textInput}
+                      <CurrencyInput
+                        value={dueDateStr ? parseInt(dueDateStr, 10) : ''}
+                        onChangeValue={(val) => setDueDateStr(val > 0 ? val.toString() : '')}
                         placeholder="VD: 10"
-                        placeholderTextColor={colors.textMuted}
-                        keyboardType="numeric"
+                        suffix=""
                         maxLength={2}
-                        value={dueDateStr}
-                        onChangeText={setDueDateStr}
+                        allowClear={false}
                       />
                     </View>
                   </View>

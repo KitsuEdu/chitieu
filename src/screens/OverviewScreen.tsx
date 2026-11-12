@@ -55,7 +55,7 @@ function splitFormattedAmount(amount: number): { numberPart: string; symbol: str
   if (isNaN(amount)) return { numberPart: '0', symbol: 'VND' };
   const formatted = Math.abs(amount)
     .toString()
-    .replace(/\B(?=(\d{3})+(?!\d))/g, '.');
+    .replace(/\B(?=(\d{3})+(?!\d))/g, ',');
   return { numberPart: formatted, symbol: 'VND' };
 }
 
