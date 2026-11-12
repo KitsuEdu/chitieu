@@ -41,8 +41,11 @@ const BAR_HEIGHT = 64;
 const CORNER_RADIUS = 20;
 const CIRCLE_RADIUS = 24;
 const CIRCLE_SIZE = CIRCLE_RADIUS * 2; // 48px
-const NOTCH_WIDTH = 64;
-const NOTCH_DEPTH_STANDARD = 34;
+// Quả bóng 48px, cách viền 1.5px mỗi bên -> NOTCH_WIDTH = 51px
+const NOTCH_WIDTH = 51;
+// Quả bóng nghỉ tại Y = -18, đáy bóng tại 30px -> cách đáy rãnh 1.5px -> NOTCH_DEPTH = 31.5px
+const NOTCH_DEPTH_STANDARD = 31.5;
+const ACTIVE_ICON_Y = -26; // 32 + (-26) = 6px -> trùng tâm với quả bóng (-18 + 24 = 6px)
 const SIDE_PADDING = 14;
 const TOTAL_TABS = 5;
 
@@ -103,11 +106,11 @@ export const LiquidNavBar: React.FC<LiquidNavBarProps> = ({
   const newNotchDepth = useSharedValue(NOTCH_DEPTH_STANDARD);
 
   // 3. Shared values cho vị trí nâng lên/hạ xuống của từng Icon
-  const icon0Y = useSharedValue(activeIndex === 0 ? -18 : 0);
-  const icon1Y = useSharedValue(activeIndex === 1 ? -18 : 0);
-  const icon2Y = useSharedValue(activeIndex === 2 ? -18 : 0);
-  const icon3Y = useSharedValue(activeIndex === 3 ? -18 : 0);
-  const icon4Y = useSharedValue(activeIndex === 4 ? -18 : 0);
+  const icon0Y = useSharedValue(activeIndex === 0 ? ACTIVE_ICON_Y : 0);
+  const icon1Y = useSharedValue(activeIndex === 1 ? ACTIVE_ICON_Y : 0);
+  const icon2Y = useSharedValue(activeIndex === 2 ? ACTIVE_ICON_Y : 0);
+  const icon3Y = useSharedValue(activeIndex === 3 ? ACTIVE_ICON_Y : 0);
+  const icon4Y = useSharedValue(activeIndex === 4 ? ACTIVE_ICON_Y : 0);
 
   const getIconSharedValue = (idx: number) => {
     switch (idx) {
@@ -137,7 +140,7 @@ export const LiquidNavBar: React.FC<LiquidNavBarProps> = ({
       newNotchX.value = targetX;
       newNotchDepth.value = NOTCH_DEPTH_STANDARD;
       for (let i = 0; i < TOTAL_TABS; i++) {
-        getIconSharedValue(i).value = i === activeIndex ? -18 : 0;
+        getIconSharedValue(i).value = i === activeIndex ? ACTIVE_ICON_Y : 0;
       }
       prevIndexRef.current = activeIndex;
       return;
@@ -160,80 +163,61 @@ export const LiquidNavBar: React.FC<LiquidNavBarProps> = ({
     newNotchDepth.value = 0;
 
     // ==========================================
-    // 1. Quỹ đạo Vòng tròn Active (Tổng ~800ms)
+    // 1. Quỹ đạo Vòng tròn Active (Nhanh hơn ~0.5s: 280ms thay vì 750ms)
     // ==========================================
-    // A. Trượt ngang: 750ms, không vượt đích (no horizontal overshoot)
     circleTranslateX.value = withTiming(targetX, {
-      duration: 750,
+      duration: 280,
       easing: Easing.bezier(0.22, 1, 0.36, 1),
     });
 
-    // B. Quỹ đạo nhảy dọc:
-    // 0ms -> 280ms: Bay cao lên tới -36px (bứt khỏi lực hút chất lỏng)
-    // 280ms -> 520ms: Rơi xuống & ép lún sâu xuống tận -6px
-    // 520ms -> 800ms: Nảy đúng 1 nhịp duy nhất lên chuẩn -18px
-    circleTranslateY.value = withSequence(
-      withTiming(-36, { duration: 280, easing: Easing.out(Easing.cubic) }),
-      withTiming(-6, { duration: 240, easing: Easing.in(Easing.quad) }),
-      withTiming(-18, { duration: 280, easing: Easing.out(Easing.back(1.1)) })
-    );
+    // Giữ quả bóng ổn định ở Y = -18 (tuyệt đối không nhảy vồng lên cao)
+    circleTranslateY.value = -18;
 
     // ==========================================
-    // 2. Hiệu ứng Slime / Chất lỏng trên SVG Path
+    // 2. Viền Navbar đẩy nhô lên tại vị trí cũ & lún xuống vị trí mới
     // ==========================================
-    // A. Tại vị trí CŨ:
-    // 0 -> 220ms: Kéo dính slime nhô gồ lên cao (-12)
-    // 220ms -> 360ms: Đỉnh gồ đứt, rơi sụp xuống lún nhẹ (+5)
-    // 360ms -> 500ms: Phẳng lì về 0
+    // Vị trí CŨ: Viền đẩy nhô lên nhẹ (-5px) rồi phẳng lì về 0
     oldNotchDepth.value = withSequence(
-      withTiming(-12, { duration: 220, easing: Easing.out(Easing.cubic) }),
-      withTiming(5, { duration: 140, easing: Easing.in(Easing.quad) }),
-      withTiming(0, { duration: 140, easing: Easing.out(Easing.quad) })
+      withTiming(-5, { duration: 120, easing: Easing.out(Easing.cubic) }),
+      withTiming(0, { duration: 140, easing: Easing.inOut(Easing.quad) })
     );
 
-    // B. Tại vị trí MỚI:
-    // 0 -> 260ms: Bề mặt vẫn phẳng lì (0)
-    // 260ms -> 520ms: Vòng tròn rơi trúng làm lún sâu xuống tận 46px
-    // 520ms -> 800ms: Đàn hồi đẩy phao lên, độ sâu thu về chuẩn 34px trong 1 nhịp duy nhất
-    newNotchDepth.value = withSequence(
-      withTiming(0, { duration: 260 }),
-      withTiming(46, { duration: 260, easing: Easing.in(Easing.quad) }),
-      withTiming(NOTCH_DEPTH_STANDARD, { duration: 280, easing: Easing.out(Easing.cubic) })
-    );
+    // Vị trí MỚI: Bề mặt lún xuống đón trọn quả bóng với khoảng cách chuẩn 1.5px
+    newNotchDepth.value = withTiming(NOTCH_DEPTH_STANDARD, {
+      duration: 280,
+      easing: Easing.bezier(0.22, 1, 0.36, 1),
+    });
 
     // ==========================================
-    // 3. Chuyển động Icon đồng bộ 1 nhịp
+    // 3. Icon di chuyển mượt mà (Không bị nảy/vung lên trời)
     // ==========================================
     for (let i = 0; i < TOTAL_TABS; i++) {
       const sv = getIconSharedValue(i);
       if (i === activeIndex) {
-        // Icon mới: Nằm yên ở 0 đến 280ms, lún sâu +8px đến 520ms, nảy lên -18px ở 800ms
-        sv.value = withSequence(
-          withTiming(0, { duration: 280 }),
-          withTiming(8, { duration: 240, easing: Easing.in(Easing.quad) }),
-          withTiming(-18, { duration: 280, easing: Easing.out(Easing.back(1.1)) })
-        );
+        // Icon mới: Lướt mượt lên vị trí ACTIVE_ICON_Y (-26px) trùng tâm quả bóng
+        sv.value = withTiming(ACTIVE_ICON_Y, {
+          duration: 260,
+          easing: Easing.bezier(0.25, 0.1, 0.25, 1),
+        });
       } else if (i === oldIdx) {
-        // Icon cũ: Bứt lên nhẹ rồi hạ về 0
-        sv.value = withSequence(
-          withTiming(-36, { duration: 220, easing: Easing.out(Easing.cubic) }),
-          withTiming(0, { duration: 260, easing: Easing.out(Easing.quad) })
-        );
+        // Icon cũ: Hạ mượt về 0
+        sv.value = withTiming(0, {
+          duration: 240,
+          easing: Easing.bezier(0.25, 0.1, 0.25, 1),
+        });
       } else {
-        sv.value = withTiming(0, { duration: 200 });
+        sv.value = withTiming(0, { duration: 150 });
       }
     }
 
-    // Rung phản hồi haptics ngay khoảnh khắc 280ms khi vòng tròn tiếp xúc mặt chất lỏng
-    setTimeout(() => {
-      triggerHaptic();
-    }, 280);
+    // Rung phản hồi haptics ngay khi bắt đầu chuyển tab
+    triggerHaptic();
 
-    // Sau khi kết thúc chu kỳ (810ms), gộp 2 điểm thành 1 điểm tĩnh ổn định
+    // Sau khi kết thúc chu kỳ (300ms), đồng bộ điểm tĩnh
     setTimeout(() => {
       oldNotchX.value = targetX;
       oldNotchDepth.value = 0;
-    }, 810);
+    }, 300);
   }, [activeIndex, barWidth]);
 
   // Xử lý chạm tab
@@ -274,10 +258,10 @@ export const LiquidNavBar: React.FC<LiquidNavBarProps> = ({
       const d = nd;
       const leftNotch = Math.max(R, x - nw / 2);
       const rightNotch = Math.min(W - R, x + nw / 2);
-      const cp1x = x - nw / 4;
-      const cp2x = x - nw / 3;
-      const cp3x = x + nw / 3;
-      const cp4x = x + nw / 4;
+      const cp1x = x - nw * 0.32;
+      const cp2x = x - nw * 0.20;
+      const cp3x = x + nw * 0.20;
+      const cp4x = x + nw * 0.32;
 
       const pathStr = `M 0 ${R} A ${R} ${R} 0 0 1 ${R} 0 L ${leftNotch} 0 C ${cp1x} 0, ${cp2x} ${d}, ${x} ${d} C ${cp3x} ${d}, ${cp4x} 0, ${rightNotch} 0 L ${W - R} 0 A ${R} ${R} 0 0 1 ${W} ${R} L ${W} ${H - R} A ${R} ${R} 0 0 1 ${W - R} ${H} L ${R} ${H} A ${R} ${R} 0 0 1 0 ${H - R} Z`;
       return { d: pathStr };
@@ -300,15 +284,15 @@ export const LiquidNavBar: React.FC<LiquidNavBarProps> = ({
     const actualRight1 = Math.min(right1, midX);
     const actualLeft2 = Math.max(left2, midX);
 
-    const cp1_1 = firstX - nw / 4;
-    const cp1_2 = firstX - nw / 3;
-    const cp1_3 = firstX + nw / 3;
-    const cp1_4 = firstX + nw / 4;
+    const cp1_1 = firstX - nw * 0.32;
+    const cp1_2 = firstX - nw * 0.20;
+    const cp1_3 = firstX + nw * 0.20;
+    const cp1_4 = firstX + nw * 0.32;
 
-    const cp2_1 = secondX - nw / 4;
-    const cp2_2 = secondX - nw / 3;
-    const cp2_3 = secondX + nw / 3;
-    const cp2_4 = secondX + nw / 4;
+    const cp2_1 = secondX - nw * 0.32;
+    const cp2_2 = secondX - nw * 0.20;
+    const cp2_3 = secondX + nw * 0.20;
+    const cp2_4 = secondX + nw * 0.32;
 
     const pathStr = `M 0 ${R} A ${R} ${R} 0 0 1 ${R} 0 L ${left1} 0 C ${cp1_1} 0, ${cp1_2} ${firstDepth}, ${firstX} ${firstDepth} C ${cp1_3} ${firstDepth}, ${cp1_4} 0, ${actualRight1} 0 L ${actualLeft2} 0 C ${cp2_1} 0, ${cp2_2} ${secondDepth}, ${secondX} ${secondDepth} C ${cp2_3} ${secondDepth}, ${cp2_4} 0, ${right2} 0 L ${W - R} 0 A ${R} ${R} 0 0 1 ${W} ${R} L ${W} ${H - R} A ${R} ${R} 0 0 1 ${W - R} ${H} L ${R} ${H} A ${R} ${R} 0 0 1 0 ${H - R} Z`;
 
@@ -333,10 +317,10 @@ export const LiquidNavBar: React.FC<LiquidNavBarProps> = ({
       const d = nd;
       const leftNotch = Math.max(R, x - nw / 2);
       const rightNotch = Math.min(W - R, x + nw / 2);
-      const cp1x = x - nw / 4;
-      const cp2x = x - nw / 3;
-      const cp3x = x + nw / 3;
-      const cp4x = x + nw / 4;
+      const cp1x = x - nw * 0.32;
+      const cp2x = x - nw * 0.20;
+      const cp3x = x + nw * 0.20;
+      const cp4x = x + nw * 0.32;
 
       const strokeStr = `M 0 ${R} A ${R} ${R} 0 0 1 ${R} 0 L ${leftNotch} 0 C ${cp1x} 0, ${cp2x} ${d}, ${x} ${d} C ${cp3x} ${d}, ${cp4x} 0, ${rightNotch} 0 L ${W - R} 0 A ${R} ${R} 0 0 1 ${W} ${R}`;
       return { d: strokeStr };
@@ -358,15 +342,15 @@ export const LiquidNavBar: React.FC<LiquidNavBarProps> = ({
     const actualRight1 = Math.min(right1, midX);
     const actualLeft2 = Math.max(left2, midX);
 
-    const cp1_1 = firstX - nw / 4;
-    const cp1_2 = firstX - nw / 3;
-    const cp1_3 = firstX + nw / 3;
-    const cp1_4 = firstX + nw / 4;
+    const cp1_1 = firstX - nw * 0.32;
+    const cp1_2 = firstX - nw * 0.20;
+    const cp1_3 = firstX + nw * 0.20;
+    const cp1_4 = firstX + nw * 0.32;
 
-    const cp2_1 = secondX - nw / 4;
-    const cp2_2 = secondX - nw / 3;
-    const cp2_3 = secondX + nw / 3;
-    const cp2_4 = secondX + nw / 4;
+    const cp2_1 = secondX - nw * 0.32;
+    const cp2_2 = secondX - nw * 0.20;
+    const cp2_3 = secondX + nw * 0.20;
+    const cp2_4 = secondX + nw * 0.32;
 
     const strokeStr = `M 0 ${R} A ${R} ${R} 0 0 1 ${R} 0 L ${left1} 0 C ${cp1_1} 0, ${cp1_2} ${firstDepth}, ${firstX} ${firstDepth} C ${cp1_3} ${firstDepth}, ${cp1_4} 0, ${actualRight1} 0 L ${actualLeft2} 0 C ${cp2_1} 0, ${cp2_2} ${secondDepth}, ${secondX} ${secondDepth} C ${cp2_3} ${secondDepth}, ${cp2_4} 0, ${right2} 0 L ${W - R} 0 A ${R} ${R} 0 0 1 ${W} ${R}`;
 
