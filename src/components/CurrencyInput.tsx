@@ -28,14 +28,17 @@ export interface CurrencyInputProps extends Omit<TextInputProps, 'value' | 'onCh
 /**
  * Format chuỗi ký tự hoặc số thành định dạng phân tách hàng nghìn bằng dấu chấm (.)
  * Ví dụ: 1000 -> "1.000", 1500000 -> "1.500.000"
+ * Trả về chuỗi rỗng nếu giá trị là 0, undefined, null để hiển thị placeholder tự nhiên
  */
 export function formatCurrencyVND(val: number | string | undefined | null): string {
-  if (val === undefined || val === null || val === '') return '';
+  if (val === undefined || val === null || val === '' || val === 0 || val === '0') {
+    return '';
+  }
   const str = typeof val === 'number' ? Math.round(val).toString() : val.toString();
   const digitsOnly = str.replace(/[^\d]/g, '');
-  if (!digitsOnly) return '';
-  // Xóa số 0 thừa ở đầu nếu độ dài > 1 (VD: "05000" -> "5000")
-  const normalized = digitsOnly.replace(/^0+(?=\d)/, '');
+  if (!digitsOnly || digitsOnly === '0') return '';
+  const normalized = digitsOnly.replace(/^0+/, '');
+  if (!normalized) return '';
   return normalized.replace(/\B(?=(\d{3})+(?!\d))/g, '.');
 }
 
@@ -63,16 +66,15 @@ export const CurrencyInput: React.FC<CurrencyInputProps> = ({
   onBlur,
   ...restProps
 }) => {
-  const [formattedText, setFormattedText] = useState<string>(() => {
-    if (value === undefined || value === null || value === '') return '';
-    return formatCurrencyVND(value);
-  });
+  const [formattedText, setFormattedText] = useState<string>(() =>
+    formatCurrencyVND(value)
+  );
   const [isFocused, setIsFocused] = useState<boolean>(false);
   const inputRef = useRef<any>(null);
 
-  // Đồng bộ khi value bên ngoài thay đổi (chỉ update nếu giá trị thực sự khác để không giật con trỏ)
+  // Đồng bộ khi value bên ngoài thay đổi (chỉ update nếu giá trị thực sự khác nhau)
   useEffect(() => {
-    if (value === undefined || value === null || value === '') {
+    if (value === undefined || value === null || value === '' || value === 0 || value === '0') {
       if (formattedText !== '') {
         setFormattedText('');
       }
@@ -83,27 +85,40 @@ export const CurrencyInput: React.FC<CurrencyInputProps> = ({
     const currentNum = parseCurrencyVND(formattedText);
     const targetNum = typeof value === 'number' ? value : parseCurrencyVND(value);
 
-    if (targetNum !== currentNum || formattedText === '') {
+    if (targetNum !== currentNum) {
       setFormattedText(targetFormatted);
     }
-  }, [value]);
+  }, [value, formattedText]);
 
   const handleChangeText = useCallback(
     (text: string) => {
-      // Nếu trước đó ô đang là '0' và người dùng bấm thêm số mới (VD: '05'), tự động lấy số mới '5'
-      let raw = text;
-      if (formattedText === '0' && text.length > 1 && text.startsWith('0')) {
-        raw = text.slice(1);
+      const digitsOnly = text.replace(/[^\d]/g, '');
+
+      // Nếu xóa hết hoặc chỉ còn số 0, đưa ô về rỗng (hiện placeholder 0, không giật số 0)
+      if (!digitsOnly || digitsOnly === '0') {
+        setFormattedText('');
+        onChangeValue?.(0);
+        onChangeFormattedText?.('');
+        return;
       }
 
-      const nextFormatted = formatCurrencyVND(raw);
-      const numericVal = parseCurrencyVND(nextFormatted);
+      // Xóa các số 0 thừa ở đầu nếu người dùng gõ số mới (VD: "05" -> "5")
+      const normalized = digitsOnly.replace(/^0+/, '');
+      if (!normalized) {
+        setFormattedText('');
+        onChangeValue?.(0);
+        onChangeFormattedText?.('');
+        return;
+      }
+
+      const nextFormatted = normalized.replace(/\B(?=(\d{3})+(?!\d))/g, '.');
+      const numericVal = parseInt(normalized, 10) || 0;
 
       setFormattedText(nextFormatted);
       onChangeValue?.(numericVal);
       onChangeFormattedText?.(nextFormatted);
     },
-    [formattedText, onChangeValue, onChangeFormattedText]
+    [onChangeValue, onChangeFormattedText]
   );
 
   const handleClear = useCallback(() => {
@@ -115,13 +130,9 @@ export const CurrencyInput: React.FC<CurrencyInputProps> = ({
   const handleFocus = useCallback(
     (e: any) => {
       setIsFocused(true);
-      // Nếu ô đang chứa số 0, khi chạm vào để gõ thì tự động xóa để hiện placeholder, gõ số mới không bị giật
-      if (formattedText === '0') {
-        setFormattedText('');
-      }
       onFocus?.(e);
     },
-    [formattedText, onFocus]
+    [onFocus]
   );
 
   const handleBlur = useCallback(
@@ -182,7 +193,7 @@ const styles = StyleSheet.create({
     borderColor: colors.border,
     borderRadius: 12,
     paddingHorizontal: 12,
-    height: 44,
+    height: 46,
   },
   containerFocused: {
     borderColor: colors.primary,
@@ -193,7 +204,7 @@ const styles = StyleSheet.create({
   },
   input: {
     flex: 1,
-    fontSize: 14,
+    fontSize: 15, // Tăng thêm 1 size theo yêu cầu
     fontWeight: '600',
     color: colors.textPrimary,
     paddingVertical: 0,
@@ -206,7 +217,7 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(255, 255, 255, 0.06)',
   },
   suffixText: {
-    fontSize: 12,
+    fontSize: 13, // Tăng thêm 1 size
     fontWeight: '700',
     color: colors.textSecondary,
     marginLeft: 4,
