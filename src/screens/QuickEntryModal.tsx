@@ -18,6 +18,8 @@ import Animated, {
   useSharedValue,
   useAnimatedStyle,
   withTiming,
+  withSequence,
+  withRepeat,
   Easing,
   runOnJS,
 } from 'react-native-reanimated';
@@ -82,6 +84,7 @@ export const QuickEntryModal: React.FC<QuickEntryModalProps> = ({
   const [note, setNote] = useState<string>('');
   const [selectedDate, setSelectedDate] = useState<Date>(new Date());
 
+  const [isAmountFocused, setIsAmountFocused] = useState<boolean>(true);
   const [isNoteFocused, setIsNoteFocused] = useState<boolean>(false);
   const [isWalletModalOpen, setIsWalletModalOpen] = useState<boolean>(false);
   const [isCategoryModalOpen, setIsCategoryModalOpen] = useState<boolean>(false);
@@ -91,6 +94,23 @@ export const QuickEntryModal: React.FC<QuickEntryModalProps> = ({
 
   const translateY = useSharedValue(SCREEN_HEIGHT);
   const backdropOpacity = useSharedValue(0);
+  const cursorOpacity = useSharedValue(1);
+
+  // Hiệu ứng con trỏ nhấp nháy khi focus vào ô số tiền
+  useEffect(() => {
+    if (visible && isAmountFocused && !isNoteFocused) {
+      cursorOpacity.value = withRepeat(
+        withSequence(
+          withTiming(0, { duration: 450 }),
+          withTiming(1, { duration: 450 })
+        ),
+        -1,
+        true
+      );
+    } else {
+      cursorOpacity.value = 0;
+    }
+  }, [visible, isAmountFocused, isNoteFocused]);
 
   // Load danh sách ví
   useEffect(() => {
@@ -105,6 +125,9 @@ export const QuickEntryModal: React.FC<QuickEntryModalProps> = ({
   // Animation mở / đóng modal
   useEffect(() => {
     if (visible) {
+      setIsAmountFocused(true);
+      setIsNoteFocused(false);
+
       if (initialPreset) {
         if (initialPreset.category) setCategory(initialPreset.category);
         if (initialPreset.note !== undefined) setNote(initialPreset.note);
@@ -289,6 +312,10 @@ export const QuickEntryModal: React.FC<QuickEntryModalProps> = ({
     opacity: backdropOpacity.value,
   }));
 
+  const cursorAnimatedStyle = useAnimatedStyle(() => ({
+    opacity: cursorOpacity.value,
+  }));
+
   if (!isRendered) return null;
 
   return (
@@ -422,31 +449,43 @@ export const QuickEntryModal: React.FC<QuickEntryModalProps> = ({
               style={styles.amountRow}
               onPress={() => {
                 Keyboard.dismiss();
+                setIsAmountFocused(true);
+                setIsNoteFocused(false);
               }}
             >
-              <View style={styles.vndBadge}>
-                <Text style={styles.vndBadgeText}>VND</Text>
+              <View style={[styles.vndBadge, isAmountFocused && styles.vndBadgeFocused]}>
+                <Text style={[styles.vndBadgeText, isAmountFocused && styles.vndBadgeTextFocused]}>
+                  VND
+                </Text>
               </View>
 
               <View style={styles.amountDisplay}>
-                <Text
-                  style={[
-                    styles.amountText,
-                    type === 'EXPENSE' && { color: '#34D399' },
-                    type === 'INCOME' && { color: '#34D399' },
-                    type === 'TRANSFER' && { color: '#8B5CF6' },
-                  ]}
-                  numberOfLines={1}
-                  adjustsFontSizeToFit
-                >
-                  {formatExpressionWithCommas(expression)}
-                </Text>
+                <View style={styles.amountTextContainer}>
+                  <Text
+                    style={[
+                      styles.amountText,
+                      isAmountFocused && { color: '#A855F7' },
+                      type === 'EXPENSE' && !isAmountFocused && { color: '#34D399' },
+                      type === 'INCOME' && !isAmountFocused && { color: '#34D399' },
+                      type === 'TRANSFER' && !isAmountFocused && { color: '#8B5CF6' },
+                    ]}
+                    numberOfLines={1}
+                    adjustsFontSizeToFit
+                  >
+                    {formatExpressionWithCommas(expression)}
+                  </Text>
+                  {isAmountFocused && !isNoteFocused && (
+                    <Animated.View style={[styles.blinkingCursor, cursorAnimatedStyle]} />
+                  )}
+                </View>
+
                 <View
                   style={[
                     styles.amountActiveUnderline,
-                    type === 'EXPENSE' && { backgroundColor: '#34D399' },
-                    type === 'INCOME' && { backgroundColor: '#34D399' },
-                    type === 'TRANSFER' && { backgroundColor: '#8B5CF6' },
+                    isAmountFocused && styles.amountActiveUnderlineFocused,
+                    type === 'EXPENSE' && !isAmountFocused && { backgroundColor: '#34D399' },
+                    type === 'INCOME' && !isAmountFocused && { backgroundColor: '#34D399' },
+                    type === 'TRANSFER' && !isAmountFocused && { backgroundColor: '#8B5CF6' },
                   ]}
                 />
               </View>
@@ -486,8 +525,14 @@ export const QuickEntryModal: React.FC<QuickEntryModalProps> = ({
                 value={note}
                 onChangeText={setNote}
                 maxLength={80}
-                onFocus={() => setIsNoteFocused(true)}
-                onBlur={() => setIsNoteFocused(false)}
+                onFocus={() => {
+                  setIsAmountFocused(false);
+                  setIsNoteFocused(true);
+                }}
+                onBlur={() => {
+                  setIsNoteFocused(false);
+                  setIsAmountFocused(true);
+                }}
                 returnKeyType="done"
                 onSubmitEditing={() => Keyboard.dismiss()}
               />
@@ -723,6 +768,28 @@ const styles = StyleSheet.create({
     borderRadius: 1,
     marginTop: 4,
     width: '100%',
+  },
+  amountActiveUnderlineFocused: {
+    backgroundColor: '#8B5CF6',
+    height: 2.5,
+  },
+  amountTextContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  blinkingCursor: {
+    width: 2.5,
+    height: 28,
+    backgroundColor: '#A855F7',
+    marginLeft: 4,
+    borderRadius: 1.5,
+  },
+  vndBadgeFocused: {
+    borderColor: 'rgba(139, 92, 246, 0.4)',
+    backgroundColor: 'rgba(139, 92, 246, 0.12)',
+  },
+  vndBadgeTextFocused: {
+    color: '#A855F7',
   },
   noteRow: {
     flexDirection: 'row',
