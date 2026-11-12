@@ -67,11 +67,11 @@ export const WalletsScreen: React.FC<WalletsScreenProps> = ({ onWalletsUpdated }
   const [selectedIcon, setSelectedIcon] = useState<string>('Wallet');
 
   // Fields for CASH & BANK_EWALLET & BALANCE e-wallet
-  const [balance, setBalance] = useState<number>(0);
+  const [balance, setBalance] = useState<number | undefined>(undefined);
 
   // Fields for CREDIT_CARD & PAYLATER
-  const [creditLimit, setCreditLimit] = useState<number>(0);
-  const [currentBalance, setCurrentBalance] = useState<number>(0);
+  const [creditLimit, setCreditLimit] = useState<number | undefined>(undefined);
+  const [currentBalance, setCurrentBalance] = useState<number | undefined>(undefined);
   const [statementDateStr, setStatementDateStr] = useState<string>('');
   const [dueDateStr, setDueDateStr] = useState<string>('');
   const [feeWarningNote, setFeeWarningNote] = useState<string>('');
@@ -183,9 +183,9 @@ export const WalletsScreen: React.FC<WalletsScreenProps> = ({ onWalletsUpdated }
         ? 'Landmark'
         : 'Wallet'
     );
-    setBalance(0);
-    setCreditLimit(0);
-    setCurrentBalance(0);
+    setBalance(undefined);
+    setCreditLimit(undefined);
+    setCurrentBalance(undefined);
     setStatementDateStr('');
     setDueDateStr('');
     setFeeWarningNote('');
@@ -202,9 +202,9 @@ export const WalletsScreen: React.FC<WalletsScreenProps> = ({ onWalletsUpdated }
     setEwalletSubtype(
       (w.creditLimit || 0) > 0 || (w.currentBalance || 0) > 0 ? 'PAYLATER' : 'BALANCE'
     );
-    setBalance(w.balance || 0);
-    setCreditLimit(w.creditLimit || 0);
-    setCurrentBalance(w.currentBalance || 0);
+    setBalance(w.balance);
+    setCreditLimit(w.creditLimit);
+    setCurrentBalance(w.currentBalance);
     setStatementDateStr(w.statementDate ? w.statementDate.toString() : '');
     setDueDateStr(w.dueDate ? w.dueDate.toString() : '');
     setFeeWarningNote(w.feeWarningNote || '');
@@ -266,9 +266,9 @@ export const WalletsScreen: React.FC<WalletsScreenProps> = ({ onWalletsUpdated }
         icon: selectedLogoId || selectedIcon,
         logoId: selectedLogoId,
         colorGradient: [chosenColor, chosenColor] as [string, string],
-        balance: !isCredit ? balance : undefined,
-        creditLimit: isCredit ? creditLimit : undefined,
-        currentBalance: isCredit ? currentBalance : undefined,
+        balance: !isCredit ? (balance ?? 0) : undefined,
+        creditLimit: isCredit ? (creditLimit ?? 0) : undefined,
+        currentBalance: isCredit ? (currentBalance ?? 0) : undefined,
         statementDate: isCredit ? parseInt(statementDateStr, 10) || undefined : undefined,
         dueDate: isCredit ? parseInt(dueDateStr, 10) || undefined : undefined,
         feeWarningNote: isCredit ? feeWarningNote.trim() || undefined : undefined,

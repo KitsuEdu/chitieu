@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
   View,
   TextInput,
@@ -63,27 +63,47 @@ export const CurrencyInput: React.FC<CurrencyInputProps> = ({
   onBlur,
   ...restProps
 }) => {
-  const [formattedText, setFormattedText] = useState<string>(() =>
-    formatCurrencyVND(value)
-  );
+  const [formattedText, setFormattedText] = useState<string>(() => {
+    if (value === undefined || value === null || value === '') return '';
+    return formatCurrencyVND(value);
+  });
   const [isFocused, setIsFocused] = useState<boolean>(false);
+  const inputRef = useRef<any>(null);
 
-  // Đồng bộ khi value bên ngoài thay đổi
+  // Đồng bộ khi value bên ngoài thay đổi (chỉ update nếu giá trị thực sự khác để không giật con trỏ)
   useEffect(() => {
-    const formatted = formatCurrencyVND(value);
-    setFormattedText(formatted);
+    if (value === undefined || value === null || value === '') {
+      if (formattedText !== '') {
+        setFormattedText('');
+      }
+      return;
+    }
+
+    const targetFormatted = formatCurrencyVND(value);
+    const currentNum = parseCurrencyVND(formattedText);
+    const targetNum = typeof value === 'number' ? value : parseCurrencyVND(value);
+
+    if (targetNum !== currentNum || formattedText === '') {
+      setFormattedText(targetFormatted);
+    }
   }, [value]);
 
   const handleChangeText = useCallback(
     (text: string) => {
-      const nextFormatted = formatCurrencyVND(text);
+      // Nếu trước đó ô đang là '0' và người dùng bấm thêm số mới (VD: '05'), tự động lấy số mới '5'
+      let raw = text;
+      if (formattedText === '0' && text.length > 1 && text.startsWith('0')) {
+        raw = text.slice(1);
+      }
+
+      const nextFormatted = formatCurrencyVND(raw);
       const numericVal = parseCurrencyVND(nextFormatted);
 
       setFormattedText(nextFormatted);
       onChangeValue?.(numericVal);
       onChangeFormattedText?.(nextFormatted);
     },
-    [onChangeValue, onChangeFormattedText]
+    [formattedText, onChangeValue, onChangeFormattedText]
   );
 
   const handleClear = useCallback(() => {
@@ -91,6 +111,26 @@ export const CurrencyInput: React.FC<CurrencyInputProps> = ({
     onChangeValue?.(0);
     onChangeFormattedText?.('');
   }, [onChangeValue, onChangeFormattedText]);
+
+  const handleFocus = useCallback(
+    (e: any) => {
+      setIsFocused(true);
+      // Nếu ô đang chứa số 0, khi chạm vào để gõ thì tự động xóa để hiện placeholder, gõ số mới không bị giật
+      if (formattedText === '0') {
+        setFormattedText('');
+      }
+      onFocus?.(e);
+    },
+    [formattedText, onFocus]
+  );
+
+  const handleBlur = useCallback(
+    (e: any) => {
+      setIsFocused(false);
+      onBlur?.(e);
+    },
+    [onBlur]
+  );
 
   return (
     <View
@@ -102,6 +142,7 @@ export const CurrencyInput: React.FC<CurrencyInputProps> = ({
       ]}
     >
       <TextInput
+        ref={inputRef}
         style={[styles.input, inputStyle]}
         value={formattedText}
         onChangeText={handleChangeText}
@@ -109,14 +150,8 @@ export const CurrencyInput: React.FC<CurrencyInputProps> = ({
         placeholderTextColor={colors.textMuted}
         keyboardType="numeric"
         editable={editable}
-        onFocus={(e) => {
-          setIsFocused(true);
-          onFocus?.(e);
-        }}
-        onBlur={(e) => {
-          setIsFocused(false);
-          onBlur?.(e);
-        }}
+        onFocus={handleFocus}
+        onBlur={handleBlur}
         {...restProps}
       />
 
