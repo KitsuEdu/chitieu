@@ -84,7 +84,17 @@ export const QuickEntryScreen: React.FC<QuickEntryScreenProps> = ({
   const [isCategoryModalOpen, setIsCategoryModalOpen] = useState<boolean>(false);
 
   const noteInputRef = useRef<any>(null);
+  const scrollViewRef = useRef<any>(null);
   const cursorOpacity = useSharedValue(0);
+
+  // Tự động cuộn nhẹ để giữ ô số tiền và bàn phím ở vị trí trung tâm, không bị khuất
+  useEffect(() => {
+    if (isAmountFocused) {
+      setTimeout(() => {
+        scrollViewRef.current?.scrollTo({ y: 80, animated: true });
+      }, 60);
+    }
+  }, [isAmountFocused]);
 
   // Hiệu ứng con trỏ nhấp nháy khi focus vào ô số tiền
   useEffect(() => {
@@ -272,6 +282,7 @@ export const QuickEntryScreen: React.FC<QuickEntryScreenProps> = ({
       style={styles.container}
     >
       <ScrollView
+        ref={scrollViewRef}
         style={styles.scrollView}
         contentContainerStyle={styles.contentContainer}
         keyboardShouldPersistTaps="handled"
@@ -451,6 +462,37 @@ export const QuickEntryScreen: React.FC<QuickEntryScreenProps> = ({
             </View>
           </Pressable>
 
+          {/* Bàn phím số Numpad: Nằm ngay dưới ô Số tiền ở đúng vị trí */}
+          {isAmountFocused && !isNoteFocused && (
+            <View style={styles.inlineNumpadWrapper}>
+              <View style={styles.numpadHeaderBar}>
+                <Text style={styles.numpadHeaderTitle}>Bàn phím máy tính</Text>
+                <TouchableOpacity
+                  style={styles.closeNumpadBtn}
+                  onPress={() => setIsAmountFocused(false)}
+                >
+                  <Text style={styles.closeNumpadText}>Thu gọn</Text>
+                  <ChevronDown size={16} color="#8B5CF6" />
+                </TouchableOpacity>
+              </View>
+
+              <CalculatorNumpad
+                expression={expression}
+                evaluatedAmount={evaluatedAmount}
+                hasPendingOperator={pendingOperator}
+                onPressDigit={handleDigit}
+                onPressOperator={handleOperator}
+                onPressBackspace={handleBackspace}
+                onPressClear={handleClear}
+                onPressEqual={handleEqual}
+                onPressChip={handleChip}
+                onSave={handleSave}
+                containerStyle={styles.inlineNumpadInner}
+                hideSaveButton
+              />
+            </View>
+          )}
+
           <View style={styles.divider} />
 
           {/* Row 3: Chọn Nhóm (Category) */}
@@ -545,46 +587,15 @@ export const QuickEntryScreen: React.FC<QuickEntryScreenProps> = ({
           </View>
         </View>
 
-        {/* 3. Bàn phím số Numpad (Chỉ mở khi bấm vào ô Số tiền) */}
-        {isAmountFocused && !isNoteFocused && (
-          <View style={styles.numpadWrapper}>
-            <View style={styles.numpadHeaderBar}>
-              <Text style={styles.numpadHeaderTitle}>Bàn phím tính toán</Text>
-              <TouchableOpacity
-                style={styles.closeNumpadBtn}
-                onPress={() => setIsAmountFocused(false)}
-              >
-                <Text style={styles.closeNumpadText}>Thu gọn</Text>
-                <ChevronDown size={16} color="#8B5CF6" />
-              </TouchableOpacity>
-            </View>
-
-            <CalculatorNumpad
-              expression={expression}
-              evaluatedAmount={evaluatedAmount}
-              hasPendingOperator={pendingOperator}
-              onPressDigit={handleDigit}
-              onPressOperator={handleOperator}
-              onPressBackspace={handleBackspace}
-              onPressClear={handleClear}
-              onPressEqual={handleEqual}
-              onPressChip={handleChip}
-              onSave={handleSave}
-            />
-          </View>
-        )}
-
-        {/* 4. Nút Lưu giao dịch cố định khi chưa mở bàn phím số */}
-        {!isAmountFocused && !isNoteFocused && (
-          <TouchableOpacity
-            style={styles.saveActionBtn}
-            onPress={handleSave}
-            activeOpacity={0.8}
-          >
-            <Check size={20} color="#FFFFFF" strokeWidth={2.5} style={{ marginRight: 8 }} />
-            <Text style={styles.saveActionBtnText}>Lưu giao dịch</Text>
-          </TouchableOpacity>
-        )}
+        {/* Nút Lưu giao dịch */}
+        <TouchableOpacity
+          style={styles.saveActionBtn}
+          onPress={handleSave}
+          activeOpacity={0.8}
+        >
+          <Check size={20} color="#FFFFFF" strokeWidth={2.5} style={{ marginRight: 8 }} />
+          <Text style={styles.saveActionBtnText}>Lưu giao dịch</Text>
+        </TouchableOpacity>
       </ScrollView>
 
       {/* Modal Chọn Ví */}
@@ -619,7 +630,7 @@ const styles = StyleSheet.create({
   contentContainer: {
     paddingHorizontal: 16,
     paddingTop: 12,
-    paddingBottom: 110, // Chừa khoảng trống an toàn cho thanh LiquidNavBar nổi ở đáy
+    paddingBottom: 160, // Đảm bảo mọi nội dung và nút Lưu cách xa LiquidNavBar ít nhất 60px
   },
   topHeader: {
     flexDirection: 'row',
@@ -832,21 +843,22 @@ const styles = StyleSheet.create({
     paddingHorizontal: 8,
     paddingVertical: 6,
   },
-  numpadWrapper: {
-    backgroundColor: '#12141F',
-    borderRadius: 20,
-    borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.07)',
-    overflow: 'hidden',
-    marginBottom: 16,
+  inlineNumpadWrapper: {
+    paddingTop: 6,
+    paddingBottom: 8,
+  },
+  inlineNumpadInner: {
+    backgroundColor: 'transparent',
+    borderTopWidth: 0,
+    paddingHorizontal: 0,
+    paddingBottom: 4,
   },
   numpadHeaderBar: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingHorizontal: 16,
-    paddingTop: 12,
-    paddingBottom: 4,
+    paddingVertical: 6,
+    marginBottom: 4,
   },
   numpadHeaderTitle: {
     fontSize: 12,

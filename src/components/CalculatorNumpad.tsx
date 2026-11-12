@@ -32,6 +32,8 @@ interface CalculatorNumpadProps {
   onSave: () => void;
   onFocusNote?: () => void;
   onAttachImage?: () => void;
+  containerStyle?: any;
+  hideSaveButton?: boolean;
 }
 
 interface KeyProps {
@@ -130,33 +132,37 @@ export const CalculatorNumpad: React.FC<CalculatorNumpadProps> = ({
   onSave,
   onFocusNote,
   onAttachImage,
+  containerStyle,
+  hideSaveButton = false,
 }) => {
   const chips = getSmartChips(expression);
   const canSave = evaluatedAmount > 0;
 
   return (
-    <View style={styles.container}>
+    <View style={[styles.container, containerStyle]}>
       {/* 1. Action Bar: Nút Lưu full màn hình ngang */}
-      <View style={styles.actionBar}>
-        <Pressable
-          style={[
-            styles.saveButton,
-            canSave ? styles.saveButtonActive : styles.saveButtonDisabled,
-          ]}
-          onPressIn={triggerHaptic}
-          onPress={onSave}
-          disabled={!canSave}
-        >
-          <Text
+      {!hideSaveButton && (
+        <View style={styles.actionBar}>
+          <Pressable
             style={[
-              styles.saveButtonText,
-              canSave ? styles.saveButtonTextActive : styles.saveButtonTextDisabled,
+              styles.saveButton,
+              canSave ? styles.saveButtonActive : styles.saveButtonDisabled,
             ]}
+            onPressIn={triggerHaptic}
+            onPress={onSave}
+            disabled={!canSave}
           >
-            Lưu
-          </Text>
-        </Pressable>
-      </View>
+            <Text
+              style={[
+                styles.saveButtonText,
+                canSave ? styles.saveButtonTextActive : styles.saveButtonTextDisabled,
+              ]}
+            >
+              Lưu
+            </Text>
+          </Pressable>
+        </View>
+      )}
 
       {/* 2. Smart Suggestion Chips */}
       <View style={styles.chipsRow}>
