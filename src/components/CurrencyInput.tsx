@@ -53,7 +53,7 @@ export const CurrencyInput: React.FC<CurrencyInputProps> = ({
   onChangeValue,
   onChangeFormattedText,
   placeholder = '0',
-  suffix = 'đ',
+  suffix = 'VND',
   allowClear = true,
   containerStyle,
   inputStyle,
@@ -158,21 +158,22 @@ const styles = StyleSheet.create({
   },
   input: {
     flex: 1,
-    fontSize: 14, // Tăng 1px theo yêu cầu
+    fontSize: 14,
     fontWeight: '600',
     color: colors.textPrimary,
     paddingVertical: 0,
+    minWidth: 0,
   },
   clearBtn: {
     padding: 4,
-    marginRight: 6,
+    marginRight: 4,
     borderRadius: 10,
     backgroundColor: 'rgba(255, 255, 255, 0.06)',
   },
   suffixText: {
-    fontSize: 13,
+    fontSize: 12,
     fontWeight: '700',
     color: colors.textSecondary,
-    marginLeft: 2,
+    marginLeft: 4,
   },
 });

@@ -52,11 +52,11 @@ interface OverviewScreenProps {
 }
 
 function splitFormattedAmount(amount: number): { numberPart: string; symbol: string } {
-  if (isNaN(amount)) return { numberPart: '0', symbol: 'đ' };
+  if (isNaN(amount)) return { numberPart: '0', symbol: 'VND' };
   const formatted = Math.abs(amount)
     .toString()
     .replace(/\B(?=(\d{3})+(?!\d))/g, '.');
-  return { numberPart: formatted, symbol: 'đ' };
+  return { numberPart: formatted, symbol: 'VND' };
 }
 
 export const OverviewScreen: React.FC<OverviewScreenProps> = ({
@@ -389,7 +389,7 @@ export const OverviewScreen: React.FC<OverviewScreenProps> = ({
             <View>
               <Text style={styles.monthStatLabel}>Thu tháng này</Text>
               <Text style={styles.monthIncomeValue}>
-                {isBalanceHidden ? '•••••• đ' : formatVND(monthIncome)}
+                {isBalanceHidden ? '•••••• VND' : formatVND(monthIncome)}
               </Text>
             </View>
           </View>
@@ -403,7 +403,7 @@ export const OverviewScreen: React.FC<OverviewScreenProps> = ({
             <View>
               <Text style={styles.monthStatLabel}>Chi tháng này</Text>
               <Text style={styles.monthExpenseValue}>
-                {isBalanceHidden ? '•••••• đ' : formatVND(monthExpense)}
+                {isBalanceHidden ? '•••••• VND' : formatVND(monthExpense)}
               </Text>
             </View>
           </View>

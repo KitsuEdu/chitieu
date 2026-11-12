@@ -215,7 +215,6 @@ export const WalletsScreen: React.FC<WalletsScreenProps> = ({ onWalletsUpdated }
     if (logo) {
       setSelectedLogoId(logo.id);
       setSelectedIcon(logo.id);
-      // Auto-fill wallet name if empty or default placeholder
       if (
         !walletName.trim() ||
         walletName === 'Ngân hàng' ||
@@ -367,10 +366,12 @@ export const WalletsScreen: React.FC<WalletsScreenProps> = ({ onWalletsUpdated }
       >
         {/* Header màn hình */}
         <View style={styles.topHeader}>
-          <View>
-            <Text style={styles.pageTitle}>Quản lý ví đa nguồn</Text>
-            <Text style={styles.pageSubTitle}>
-              Tiền mặt • Ngân hàng • Thẻ tín dụng • Ví điện tử
+          <View style={styles.topHeaderTitleCol}>
+            <Text style={styles.pageTitle} numberOfLines={1}>
+              Quản lý ví
+            </Text>
+            <Text style={styles.pageSubTitle} numberOfLines={1}>
+              Tiền mặt • Ngân hàng • Thẻ • Ví điện tử
             </Text>
           </View>
 
@@ -379,20 +380,29 @@ export const WalletsScreen: React.FC<WalletsScreenProps> = ({ onWalletsUpdated }
             onPress={() => handleOpenAddModal('CASH')}
             activeOpacity={0.8}
           >
-            <Plus size={16} color="#FFFFFF" style={{ marginRight: 4 }} />
+            <Plus size={15} color="#FFFFFF" style={{ marginRight: 4 }} />
             <Text style={styles.addWalletBtnText}>Thêm ví</Text>
           </TouchableOpacity>
         </View>
 
-        {/* Dashboard tóm tắt: Flat Matte Dark Solid Color */}
+        {/* Dashboard tóm tắt: Đảm bảo không bao giờ vỡ chữ */}
         <View style={styles.summaryBox}>
           <View style={styles.summaryItem}>
             <View style={styles.summaryIconCash}>
-              <CircleDollarSign size={16} color={colors.income} />
+              <CircleDollarSign size={15} color={colors.income} />
             </View>
-            <View>
-              <Text style={styles.summaryLabel}>TIỀN KHẢ DỤNG</Text>
-              <Text style={styles.summaryValCash}>{formatVND(totalAvailableCash)}</Text>
+            <View style={styles.summaryTextCol}>
+              <Text style={styles.summaryLabel} numberOfLines={1}>
+                TIỀN KHẢ DỤNG
+              </Text>
+              <Text
+                style={styles.summaryValCash}
+                numberOfLines={1}
+                adjustsFontSizeToFit
+                minimumFontScale={0.75}
+              >
+                {formatVND(totalAvailableCash)}
+              </Text>
             </View>
           </View>
 
@@ -400,30 +410,37 @@ export const WalletsScreen: React.FC<WalletsScreenProps> = ({ onWalletsUpdated }
 
           <View style={styles.summaryItem}>
             <View style={styles.summaryIconDebt}>
-              <AlertTriangle size={16} color={colors.expense} />
+              <AlertTriangle size={15} color={colors.expense} />
             </View>
-            <View>
-              <Text style={styles.summaryLabel}>TỔNG DƯ NỢ</Text>
-              <Text style={styles.summaryValDebt}>{formatVND(totalDebt)}</Text>
+            <View style={styles.summaryTextCol}>
+              <Text style={styles.summaryLabel} numberOfLines={1}>
+                TỔNG DƯ NỢ
+              </Text>
+              <Text
+                style={styles.summaryValDebt}
+                numberOfLines={1}
+                adjustsFontSizeToFit
+                minimumFontScale={0.75}
+              >
+                {formatVND(totalDebt)}
+              </Text>
             </View>
           </View>
         </View>
 
-        {/* Segmented Filter */}
+        {/* Segmented Filter: Nhãn ngắn gọn, vừa vặn trên mọi màn hình */}
         <View style={styles.filterBar}>
-          {(['ALL', 'ASSETS', 'LIABILITIES'] as const).map((mode) => {
-            const isSelected = filterMode === mode;
-            const label =
-              mode === 'ALL'
-                ? 'Tất cả nguồn'
-                : mode === 'ASSETS'
-                ? 'KhẢ DỤNG'
-                : 'Tín dụng & Ví điện tử';
+          {[
+            { mode: 'ALL' as const, label: 'Tất cả' },
+            { mode: 'ASSETS' as const, label: 'Khả dụng' },
+            { mode: 'LIABILITIES' as const, label: 'Tín dụng / Nợ' },
+          ].map((item) => {
+            const isSelected = filterMode === item.mode;
             return (
               <TouchableOpacity
-                key={mode}
+                key={item.mode}
                 style={[styles.filterChip, isSelected && styles.filterChipActive]}
-                onPress={() => setFilterMode(mode)}
+                onPress={() => setFilterMode(item.mode)}
                 activeOpacity={0.7}
               >
                 <Text
@@ -431,15 +448,16 @@ export const WalletsScreen: React.FC<WalletsScreenProps> = ({ onWalletsUpdated }
                     styles.filterChipText,
                     isSelected && styles.filterChipTextActive,
                   ]}
+                  numberOfLines={1}
                 >
-                  {mode === 'ASSETS' ? 'Khả dụng (Cash/Bank)' : label}
+                  {item.label}
                 </Text>
               </TouchableOpacity>
             );
           })}
         </View>
 
-        {/* Danh sách thẻ ví: Flat Matte Dark Solid Color (Không Gradient) */}
+        {/* Danh sách thẻ ví: Flat Matte Dark Solid Color */}
         <View style={styles.cardsList}>
           {filteredWallets.map((w, index) => {
             const fin = getWalletFinancials(w);
@@ -449,11 +467,11 @@ export const WalletsScreen: React.FC<WalletsScreenProps> = ({ onWalletsUpdated }
             return (
               <Animated.View
                 key={w.id}
-                entering={FadeInDown.delay(index * 60).duration(350)}
+                entering={FadeInDown.delay(index * 50).duration(300)}
                 style={styles.cardWrapper}
               >
                 <View style={styles.cardInner}>
-                  {/* Top: Logo SVG thương hiệu + Tên + Chấm màu nhận diện */}
+                  {/* Top: Logo SVG thương hiệu + Tên + Action Buttons */}
                   <View style={styles.cardTopRow}>
                     <View style={styles.cardIconAndName}>
                       <WalletLogo
@@ -461,17 +479,19 @@ export const WalletsScreen: React.FC<WalletsScreenProps> = ({ onWalletsUpdated }
                         icon={w.icon}
                         name={w.name}
                         type={w.type}
-                        size={26}
-                        containerSize={44}
+                        size={24}
+                        containerSize={40}
                         containerBg="#0F111A"
                         borderColor="rgba(255, 255, 255, 0.08)"
                       />
-                      <View style={{ marginLeft: 2 }}>
+                      <View style={styles.cardTitleCol}>
                         <View style={styles.nameRow}>
                           <View style={[styles.dotIndicator, { backgroundColor: dotColor }]} />
-                          <Text style={styles.cardWalletName}>{w.name}</Text>
+                          <Text style={styles.cardWalletName} numberOfLines={1}>
+                            {w.name}
+                          </Text>
                         </View>
-                        <Text style={[styles.typeBadgeText, { color: badge.color }]}>
+                        <Text style={[styles.typeBadgeText, { color: badge.color }]} numberOfLines={1}>
                           {badge.label}
                         </Text>
                       </View>
@@ -482,16 +502,18 @@ export const WalletsScreen: React.FC<WalletsScreenProps> = ({ onWalletsUpdated }
                         style={styles.cardActionIconBtn}
                         onPress={() => handleOpenEditModal(w)}
                         activeOpacity={0.7}
+                        hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
                       >
-                        <Pencil size={14} color={colors.textSecondary} />
+                        <Pencil size={13} color={colors.textSecondary} />
                       </TouchableOpacity>
 
                       <TouchableOpacity
                         style={styles.cardActionIconBtn}
                         onPress={() => handleDeleteWallet(w)}
                         activeOpacity={0.7}
+                        hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
                       >
-                        <Trash size={14} color={colors.textMuted} />
+                        <Trash size={13} color={colors.textMuted} />
                       </TouchableOpacity>
                     </View>
                   </View>
@@ -500,16 +522,30 @@ export const WalletsScreen: React.FC<WalletsScreenProps> = ({ onWalletsUpdated }
                   {fin.isCreditOrPayLater ? (
                     <View style={styles.creditBody}>
                       <View style={styles.creditMainStats}>
-                        <View>
-                          <Text style={styles.statSubLabel}>DƯ NỢ HIỆN TẠI</Text>
-                          <Text style={styles.debtAmountValue}>
+                        <View style={styles.creditStatColLeft}>
+                          <Text style={styles.statSubLabel} numberOfLines={1}>
+                            DƯ NỢ HIỆN TẠI
+                          </Text>
+                          <Text
+                            style={styles.debtAmountValue}
+                            numberOfLines={1}
+                            adjustsFontSizeToFit
+                            minimumFontScale={0.75}
+                          >
                             {formatVND(fin.effectiveDebt || 0)}
                           </Text>
                         </View>
 
-                        <View style={{ alignItems: 'flex-end' }}>
-                          <Text style={styles.statSubLabel}>HẠN MỨC CÒN LẠI</Text>
-                          <Text style={styles.availableLimitValue}>
+                        <View style={styles.creditStatColRight}>
+                          <Text style={styles.statSubLabel} numberOfLines={1}>
+                            HẠN MỨC CÒN LẠI
+                          </Text>
+                          <Text
+                            style={styles.availableLimitValue}
+                            numberOfLines={1}
+                            adjustsFontSizeToFit
+                            minimumFontScale={0.75}
+                          >
                             {formatVND(fin.availableLimit || 0)}
                           </Text>
                         </View>
@@ -534,10 +570,10 @@ export const WalletsScreen: React.FC<WalletsScreenProps> = ({ onWalletsUpdated }
                           />
                         </View>
                         <View style={styles.limitLabelsRow}>
-                          <Text style={styles.limitLabelLeft}>
+                          <Text style={styles.limitLabelLeft} numberOfLines={1}>
                             Đã dùng {(fin.utilization || 0).toFixed(0)}%
                           </Text>
-                          <Text style={styles.limitLabelRight}>
+                          <Text style={styles.limitLabelRight} numberOfLines={1}>
                             Hạn mức: {formatVND(fin.limit || 0)}
                           </Text>
                         </View>
@@ -547,7 +583,7 @@ export const WalletsScreen: React.FC<WalletsScreenProps> = ({ onWalletsUpdated }
                       <View style={styles.cycleInfoRow}>
                         {w.statementDate ? (
                           <View style={styles.cycleBadge}>
-                            <Calendar size={11} color={colors.textSecondary} style={{ marginRight: 4 }} />
+                            <Calendar size={10} color={colors.textSecondary} style={{ marginRight: 3 }} />
                             <Text style={styles.cycleBadgeText}>
                               Sao kê: ngày {w.statementDate}
                             </Text>
@@ -556,7 +592,7 @@ export const WalletsScreen: React.FC<WalletsScreenProps> = ({ onWalletsUpdated }
 
                         {w.dueDate ? (
                           <View style={styles.cycleBadge}>
-                            <Calendar size={11} color={colors.warning} style={{ marginRight: 4 }} />
+                            <Calendar size={10} color={colors.warning} style={{ marginRight: 3 }} />
                             <Text style={[styles.cycleBadgeText, { color: colors.warning }]}>
                               Hạn trả: ngày {w.dueDate}
                             </Text>
@@ -564,9 +600,9 @@ export const WalletsScreen: React.FC<WalletsScreenProps> = ({ onWalletsUpdated }
                         ) : null}
 
                         <View style={styles.cycleBadge}>
-                          <TrendingDown size={11} color={colors.expense} style={{ marginRight: 4 }} />
+                          <TrendingDown size={10} color={colors.expense} style={{ marginRight: 3 }} />
                           <Text style={styles.cycleBadgeText}>
-                            Chi tháng này: {formatVND(fin.monthExp)}
+                            Chi tháng: {formatVND(fin.monthExp)}
                           </Text>
                         </View>
                       </View>
@@ -574,22 +610,29 @@ export const WalletsScreen: React.FC<WalletsScreenProps> = ({ onWalletsUpdated }
                       {/* Ghi chú cảnh báo phí nếu có */}
                       {w.feeWarningNote ? (
                         <View style={styles.feeWarningBox}>
-                          <Info size={12} color={colors.warning} style={{ marginRight: 6 }} />
-                          <Text style={styles.feeWarningText}>{w.feeWarningNote}</Text>
+                          <Info size={11} color={colors.warning} style={{ marginRight: 5 }} />
+                          <Text style={styles.feeWarningText} numberOfLines={2}>
+                            {w.feeWarningNote}
+                          </Text>
                         </View>
                       ) : null}
                     </View>
                   ) : (
                     <View style={styles.cashBody}>
                       <Text style={styles.statSubLabel}>SỐ DƯ HIỆN TẠI</Text>
-                      <Text style={styles.cashAmountValue}>
+                      <Text
+                        style={styles.cashAmountValue}
+                        numberOfLines={1}
+                        adjustsFontSizeToFit
+                        minimumFontScale={0.75}
+                      >
                         {formatVND(fin.effectiveBalance || 0)}
                       </Text>
 
                       <View style={styles.cashFooterRow}>
                         <View style={styles.cashFooterItem}>
-                          <TrendingDown size={12} color={colors.expense} style={{ marginRight: 4 }} />
-                          <Text style={styles.cashFooterLabel}>Chi tháng này:</Text>
+                          <TrendingDown size={11} color={colors.expense} style={{ marginRight: 3 }} />
+                          <Text style={styles.cashFooterLabel}>Chi tháng:</Text>
                           <Text style={styles.cashFooterVal}>{formatVND(fin.monthExp)}</Text>
                         </View>
                         <Text style={styles.cashGocLabel}>
@@ -613,7 +656,11 @@ export const WalletsScreen: React.FC<WalletsScreenProps> = ({ onWalletsUpdated }
         onRequestClose={() => setModalVisible(false)}
       >
         <View style={styles.modalBackdrop}>
-          <ScrollView contentContainerStyle={styles.modalScroll} keyboardShouldPersistTaps="handled">
+          <ScrollView
+            contentContainerStyle={styles.modalScroll}
+            keyboardShouldPersistTaps="handled"
+            showsVerticalScrollIndicator={false}
+          >
             <View style={styles.modalBox}>
               <View style={styles.modalBoxHeader}>
                 <Text style={styles.modalBoxTitle}>
@@ -622,19 +669,18 @@ export const WalletsScreen: React.FC<WalletsScreenProps> = ({ onWalletsUpdated }
                 <TouchableOpacity
                   onPress={() => setModalVisible(false)}
                   activeOpacity={0.7}
+                  hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
                 >
-                  <X size={20} color={colors.textSecondary} />
+                  <X size={18} color={colors.textSecondary} />
                 </TouchableOpacity>
               </View>
 
-              {/* Bộ chọn loại ví 4 danh mục */}
+              {/* Bộ chọn loại ví: Dạng 2 hàng x 2 cột ổn định 100% */}
               <Text style={styles.fieldLabel}>Phân loại nguồn tiền *</Text>
-              <View style={styles.typeSelectorGrid}>
+              <View style={styles.typeSelectorRow}>
                 {[
                   { key: 'CASH', label: 'Tiền mặt', icon: WalletIcon },
                   { key: 'BANK_EWALLET', label: 'Ngân hàng', icon: Landmark },
-                  { key: 'CREDIT_CARD', label: 'Thẻ tín dụng', icon: CreditCard },
-                  { key: 'PAYLATER', label: 'Ví điện tử', icon: Smartphone },
                 ].map((item) => {
                   const isSelected = walletType === item.key;
                   const IconComp = item.icon;
@@ -656,15 +702,55 @@ export const WalletsScreen: React.FC<WalletsScreenProps> = ({ onWalletsUpdated }
                       activeOpacity={0.7}
                     >
                       <IconComp
-                        size={16}
+                        size={15}
                         color={isSelected ? colors.primaryBright : colors.textMuted}
-                        style={{ marginBottom: 4 }}
+                        style={{ marginBottom: 3 }}
                       />
                       <Text
                         style={[
                           styles.typeGridLabel,
                           isSelected && styles.typeGridLabelSelected,
                         ]}
+                        numberOfLines={1}
+                      >
+                        {item.label}
+                      </Text>
+                    </TouchableOpacity>
+                  );
+                })}
+              </View>
+
+              <View style={[styles.typeSelectorRow, { marginTop: 6 }]}>
+                {[
+                  { key: 'CREDIT_CARD', label: 'Thẻ tín dụng', icon: CreditCard },
+                  { key: 'PAYLATER', label: 'Ví điện tử', icon: Smartphone },
+                ].map((item) => {
+                  const isSelected = walletType === item.key;
+                  const IconComp = item.icon;
+                  return (
+                    <TouchableOpacity
+                      key={item.key}
+                      style={[
+                        styles.typeGridBtn,
+                        isSelected && styles.typeGridBtnSelected,
+                      ]}
+                      onPress={() => {
+                        const newType = item.key as WalletType;
+                        setWalletType(newType);
+                      }}
+                      activeOpacity={0.7}
+                    >
+                      <IconComp
+                        size={15}
+                        color={isSelected ? colors.primaryBright : colors.textMuted}
+                        style={{ marginBottom: 3 }}
+                      />
+                      <Text
+                        style={[
+                          styles.typeGridLabel,
+                          isSelected && styles.typeGridLabelSelected,
+                        ]}
+                        numberOfLines={1}
                       >
                         {item.label}
                       </Text>
@@ -677,7 +763,7 @@ export const WalletsScreen: React.FC<WalletsScreenProps> = ({ onWalletsUpdated }
               {walletType !== 'CASH' && (
                 <View style={styles.logoSection}>
                   <View style={styles.logoSectionHeader}>
-                    <Text style={styles.fieldLabel}>Logo thương hiệu</Text>
+                    <Text style={styles.fieldLabelNoMargin}>Logo thương hiệu</Text>
                     <TouchableOpacity
                       onPress={() => setLogoPickerVisible(true)}
                       style={styles.openPickerBtn}
@@ -686,7 +772,7 @@ export const WalletsScreen: React.FC<WalletsScreenProps> = ({ onWalletsUpdated }
                       <Text style={styles.openPickerBtnText}>
                         {selectedLogoId ? 'Đổi logo khác' : 'Chọn logo'}
                       </Text>
-                      <ChevronRight size={14} color={colors.primaryBright} />
+                      <ChevronRight size={13} color={colors.primaryBright} />
                     </TouchableOpacity>
                   </View>
 
@@ -701,18 +787,18 @@ export const WalletsScreen: React.FC<WalletsScreenProps> = ({ onWalletsUpdated }
                       icon={selectedIcon}
                       name={walletName}
                       type={walletType}
-                      size={28}
-                      containerSize={44}
+                      size={26}
+                      containerSize={38}
                       containerBg="#0F111A"
                       borderColor={selectedLogoId ? colors.primary : 'rgba(255, 255, 255, 0.1)'}
                     />
-                    <View style={{ flex: 1, marginLeft: 12 }}>
-                      <Text style={styles.selectedLogoTitle}>
+                    <View style={styles.selectedLogoTextCol}>
+                      <Text style={styles.selectedLogoTitle} numberOfLines={1}>
                         {selectedLogoObject
                           ? selectedLogoObject.name
                           : 'Chưa chọn logo thương hiệu'}
                       </Text>
-                      <Text style={styles.selectedLogoDesc}>
+                      <Text style={styles.selectedLogoDesc} numberOfLines={1}>
                         {selectedLogoObject
                           ? selectedLogoObject.category === 'bank'
                             ? 'Logo ngân hàng Việt Nam'
@@ -720,11 +806,11 @@ export const WalletsScreen: React.FC<WalletsScreenProps> = ({ onWalletsUpdated }
                           : 'Chạm để chọn từ 84 logo ngân hàng & ví'}
                       </Text>
                     </View>
-                    <Pencil size={15} color={colors.textSecondary} />
+                    <Pencil size={13} color={colors.textSecondary} />
                   </TouchableOpacity>
 
                   {/* Danh sách logo phổ biến gợi ý nhanh */}
-                  <Text style={styles.quickLogoLabel}>Gợi ý phổ biến (Chạm chọn ngay):</Text>
+                  <Text style={styles.quickLogoLabel}>Gợi ý phổ biến:</Text>
                   <ScrollView
                     horizontal
                     showsHorizontalScrollIndicator={false}
@@ -742,18 +828,19 @@ export const WalletsScreen: React.FC<WalletsScreenProps> = ({ onWalletsUpdated }
                           onPress={() => handleSelectLogo(logo)}
                           activeOpacity={0.7}
                         >
-                          <SvgXml xml={logo.xml} width={22} height={22} />
+                          <SvgXml xml={logo.xml} width={20} height={20} />
                           <Text
                             style={[
                               styles.quickLogoChipText,
                               isSel && styles.quickLogoChipTextSelected,
                             ]}
+                            numberOfLines={1}
                           >
                             {logo.name}
                           </Text>
                           {isSel && (
                             <View style={styles.quickLogoCheck}>
-                              <Check size={9} color="#FFFFFF" strokeWidth={3} />
+                              <Check size={8} color="#FFFFFF" strokeWidth={3} />
                             </View>
                           )}
                         </TouchableOpacity>
@@ -767,7 +854,7 @@ export const WalletsScreen: React.FC<WalletsScreenProps> = ({ onWalletsUpdated }
               <Text style={styles.fieldLabel}>Tên ví / Tài khoản *</Text>
               <TextInput
                 style={styles.textInput}
-                placeholder="VD: Techcombank, Shopee SPayLater, MoMo, Visa Signature..."
+                placeholder="VD: Techcombank, MoMo, Visa Signature..."
                 placeholderTextColor={colors.textMuted}
                 value={walletName}
                 onChangeText={setWalletName}
@@ -775,7 +862,7 @@ export const WalletsScreen: React.FC<WalletsScreenProps> = ({ onWalletsUpdated }
 
               {/* Tùy biến hình thức cho Ví điện tử (Số dư vs Trả sau) */}
               {walletType === 'PAYLATER' && (
-                <View style={{ marginTop: 8 }}>
+                <View style={{ marginTop: 6 }}>
                   <Text style={styles.fieldLabel}>Hình thức ví điện tử *</Text>
                   <View style={styles.ewalletSubtypeRow}>
                     <TouchableOpacity
@@ -787,17 +874,18 @@ export const WalletsScreen: React.FC<WalletsScreenProps> = ({ onWalletsUpdated }
                       activeOpacity={0.7}
                     >
                       <CircleDollarSign
-                        size={14}
+                        size={13}
                         color={ewalletSubtype === 'BALANCE' ? colors.income : colors.textMuted}
-                        style={{ marginRight: 6 }}
+                        style={{ marginRight: 5 }}
                       />
                       <Text
                         style={[
                           styles.ewalletSubtypeText,
                           ewalletSubtype === 'BALANCE' && styles.ewalletSubtypeTextActive,
                         ]}
+                        numberOfLines={1}
                       >
-                        Ví số dư (MoMo, ZaloPay...)
+                        Ví số dư
                       </Text>
                     </TouchableOpacity>
 
@@ -810,17 +898,18 @@ export const WalletsScreen: React.FC<WalletsScreenProps> = ({ onWalletsUpdated }
                       activeOpacity={0.7}
                     >
                       <Zap
-                        size={14}
+                        size={13}
                         color={ewalletSubtype === 'PAYLATER' ? colors.warning : colors.textMuted}
-                        style={{ marginRight: 6 }}
+                        style={{ marginRight: 5 }}
                       />
                       <Text
                         style={[
                           styles.ewalletSubtypeText,
                           ewalletSubtype === 'PAYLATER' && styles.ewalletSubtypeTextActive,
                         ]}
+                        numberOfLines={1}
                       >
-                        Ví trả sau (SPayLater...)
+                        Ví trả sau
                       </Text>
                     </TouchableOpacity>
                   </View>
@@ -831,7 +920,7 @@ export const WalletsScreen: React.FC<WalletsScreenProps> = ({ onWalletsUpdated }
               {walletType === 'CREDIT_CARD' ||
               (walletType === 'PAYLATER' && ewalletSubtype === 'PAYLATER') ? (
                 <View style={styles.conditionalSection}>
-                  <Text style={styles.fieldLabel}>Hạn mức tối đa được cấp (VNĐ) *</Text>
+                  <Text style={styles.fieldLabel}>Hạn mức tối đa được cấp *</Text>
                   <CurrencyInput
                     value={creditLimit}
                     onChangeValue={setCreditLimit}
@@ -846,8 +935,10 @@ export const WalletsScreen: React.FC<WalletsScreenProps> = ({ onWalletsUpdated }
                   />
 
                   <View style={styles.dualFieldRow}>
-                    <View style={{ flex: 1 }}>
-                      <Text style={styles.fieldLabel}>Ngày chốt sao kê (1-31)</Text>
+                    <View style={styles.dualFieldCol}>
+                      <Text style={styles.fieldLabel} numberOfLines={1}>
+                        Ngày chốt sao kê
+                      </Text>
                       <TextInput
                         style={styles.textInput}
                         placeholder="VD: 25"
@@ -859,8 +950,10 @@ export const WalletsScreen: React.FC<WalletsScreenProps> = ({ onWalletsUpdated }
                       />
                     </View>
 
-                    <View style={{ flex: 1 }}>
-                      <Text style={styles.fieldLabel}>Ngày đến hạn thanh toán</Text>
+                    <View style={styles.dualFieldCol}>
+                      <Text style={styles.fieldLabel} numberOfLines={1}>
+                        Hạn thanh toán
+                      </Text>
                       <TextInput
                         style={styles.textInput}
                         placeholder="VD: 10"
@@ -876,7 +969,7 @@ export const WalletsScreen: React.FC<WalletsScreenProps> = ({ onWalletsUpdated }
                   <Text style={styles.fieldLabel}>Ghi chú phí duy trì / Lưu ý</Text>
                   <TextInput
                     style={styles.textInput}
-                    placeholder="VD: Phí 30k/tháng nếu có giao dịch, miễn lãi 45 ngày..."
+                    placeholder="VD: Phí 30k/tháng nếu có giao dịch..."
                     placeholderTextColor={colors.textMuted}
                     value={feeWarningNote}
                     onChangeText={setFeeWarningNote}
@@ -884,7 +977,7 @@ export const WalletsScreen: React.FC<WalletsScreenProps> = ({ onWalletsUpdated }
                 </View>
               ) : (
                 <View style={styles.conditionalSection}>
-                  <Text style={styles.fieldLabel}>Số dư khả dụng ban đầu (VNĐ) *</Text>
+                  <Text style={styles.fieldLabel}>Số dư khả dụng ban đầu *</Text>
                   <CurrencyInput
                     value={balance}
                     onChangeValue={setBalance}
@@ -941,15 +1034,20 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 14,
+    marginBottom: 12,
+  },
+  topHeaderTitleCol: {
+    flex: 1,
+    marginRight: 10,
+    minWidth: 0,
   },
   pageTitle: {
-    fontSize: 22,
+    fontSize: 20,
     fontWeight: '800',
     color: colors.textPrimary,
   },
   pageSubTitle: {
-    fontSize: 13, // Tăng 1px (cũ: 12)
+    fontSize: 12,
     color: colors.textSecondary,
     marginTop: 2,
   },
@@ -957,112 +1055,122 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: colors.primary,
-    paddingHorizontal: 14,
-    paddingVertical: 8,
-    borderRadius: 14,
-    elevation: 2,
+    paddingHorizontal: 12,
+    paddingVertical: 7,
+    borderRadius: 12,
+    flexShrink: 0,
   },
   addWalletBtnText: {
     color: '#FFFFFF',
-    fontSize: 14, // Tăng 1px (cũ: 13)
+    fontSize: 13,
     fontWeight: '700',
   },
   summaryBox: {
     flexDirection: 'row',
     backgroundColor: colors.surface,
-    borderRadius: 18,
-    padding: 14,
+    borderRadius: 16,
+    padding: 12,
     borderWidth: 1,
     borderColor: colors.border,
-    marginBottom: 14,
+    marginBottom: 12,
     alignItems: 'center',
   },
   summaryItem: {
     flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 10,
+    gap: 8,
+    minWidth: 0,
   },
   summaryIconCash: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
+    width: 30,
+    height: 30,
+    borderRadius: 15,
     backgroundColor: colors.incomeSoft,
     justifyContent: 'center',
     alignItems: 'center',
+    flexShrink: 0,
   },
   summaryIconDebt: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
+    width: 30,
+    height: 30,
+    borderRadius: 15,
     backgroundColor: colors.expenseSoft,
     justifyContent: 'center',
     alignItems: 'center',
+    flexShrink: 0,
+  },
+  summaryTextCol: {
+    flex: 1,
+    minWidth: 0,
   },
   summaryLabel: {
-    fontSize: 11, // Tăng 1px (cũ: 10)
+    fontSize: 10,
     fontWeight: '700',
     color: colors.textMuted,
-    letterSpacing: 0.6,
+    letterSpacing: 0.5,
   },
   summaryValCash: {
-    fontSize: 15, // Tăng 1px (cũ: 14)
+    fontSize: 13,
     fontWeight: '800',
     color: colors.income,
-    marginTop: 2,
+    marginTop: 1,
   },
   summaryValDebt: {
-    fontSize: 15, // Tăng 1px (cũ: 14)
+    fontSize: 13,
     fontWeight: '800',
     color: colors.expense,
-    marginTop: 2,
+    marginTop: 1,
   },
   summaryDivider: {
     width: 1,
-    height: 30,
+    height: 28,
     backgroundColor: colors.border,
-    marginHorizontal: 10,
+    marginHorizontal: 8,
+    flexShrink: 0,
   },
   filterBar: {
     flexDirection: 'row',
     backgroundColor: colors.surface,
-    borderRadius: 12,
+    borderRadius: 11,
     padding: 3,
-    marginBottom: 14,
+    marginBottom: 12,
     gap: 4,
     borderWidth: 1,
     borderColor: colors.border,
   },
   filterChip: {
     flex: 1,
-    paddingVertical: 7,
-    borderRadius: 9,
+    paddingVertical: 6,
+    borderRadius: 8,
     alignItems: 'center',
+    justifyContent: 'center',
+    minWidth: 0,
   },
   filterChipActive: {
     backgroundColor: colors.primarySoft,
   },
   filterChipText: {
-    fontSize: 12, // Tăng 1px (cũ: 11)
+    fontSize: 12,
     color: colors.textSecondary,
-    fontWeight: '500',
+    fontWeight: '600',
   },
   filterChipTextActive: {
     color: colors.primaryBright,
     fontWeight: '700',
   },
   cardsList: {
-    gap: 12,
+    gap: 10,
   },
   cardWrapper: {
     backgroundColor: colors.surface,
-    borderRadius: 20,
+    borderRadius: 16,
     borderWidth: 1,
     borderColor: colors.border,
     overflow: 'hidden',
   },
   cardInner: {
-    padding: 16,
+    padding: 14,
   },
   cardTopRow: {
     flexDirection: 'row',
@@ -1070,33 +1178,44 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   cardIconAndName: {
+    flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
     gap: 10,
+    marginRight: 8,
+    minWidth: 0,
+  },
+  cardTitleCol: {
+    flex: 1,
+    minWidth: 0,
   },
   nameRow: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 6,
+    minWidth: 0,
   },
   dotIndicator: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
+    width: 7,
+    height: 7,
+    borderRadius: 3.5,
+    flexShrink: 0,
   },
   cardWalletName: {
-    fontSize: 16, // Tăng 1px (cũ: 15)
+    fontSize: 15,
     fontWeight: '800',
     color: colors.textPrimary,
+    flexShrink: 1,
   },
   typeBadgeText: {
-    fontSize: 12, // Tăng 1px (cũ: 11)
+    fontSize: 11,
     fontWeight: '600',
-    marginTop: 2,
+    marginTop: 1,
   },
   cardActionsRow: {
     flexDirection: 'row',
     gap: 6,
+    flexShrink: 0,
   },
   cardActionIconBtn: {
     padding: 6,
@@ -1106,16 +1225,16 @@ const styles = StyleSheet.create({
     borderColor: colors.border,
   },
   statSubLabel: {
-    fontSize: 11, // Tăng 1px (cũ: 10)
+    fontSize: 10,
     fontWeight: '700',
     color: colors.textMuted,
-    letterSpacing: 0.8,
+    letterSpacing: 0.6,
   },
   cashBody: {
-    marginTop: 12,
+    marginTop: 10,
   },
   cashAmountValue: {
-    fontSize: 25, // Tăng 1px (cũ: 24)
+    fontSize: 21,
     fontWeight: '900',
     color: colors.textPrimary,
     marginTop: 2,
@@ -1125,65 +1244,80 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginTop: 12,
+    marginTop: 10,
     backgroundColor: colors.surfaceGlass,
-    paddingVertical: 7,
-    paddingHorizontal: 10,
-    borderRadius: 10,
+    paddingVertical: 6,
+    paddingHorizontal: 9,
+    borderRadius: 9,
     borderWidth: 1,
     borderColor: colors.border,
+    flexWrap: 'wrap',
+    gap: 6,
   },
   cashFooterItem: {
     flexDirection: 'row',
     alignItems: 'center',
+    minWidth: 0,
+    flexShrink: 1,
   },
   cashFooterLabel: {
-    fontSize: 12, // Tăng 1px (cũ: 11)
+    fontSize: 11,
     color: colors.textMuted,
-    marginRight: 4,
+    marginRight: 3,
   },
   cashFooterVal: {
-    fontSize: 12, // Tăng 1px (cũ: 11)
+    fontSize: 11,
     color: colors.expense,
     fontWeight: '700',
   },
   cashGocLabel: {
-    fontSize: 12, // Tăng 1px (cũ: 11)
+    fontSize: 11,
     color: colors.textSecondary,
     fontWeight: '600',
+    flexShrink: 0,
   },
   creditBody: {
-    marginTop: 12,
+    marginTop: 10,
   },
   creditMainStats: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
   },
+  creditStatColLeft: {
+    flex: 1,
+    minWidth: 0,
+  },
+  creditStatColRight: {
+    flex: 1,
+    minWidth: 0,
+    alignItems: 'flex-end',
+    marginLeft: 8,
+  },
   debtAmountValue: {
-    fontSize: 21, // Tăng 1px (cũ: 20)
+    fontSize: 17,
     fontWeight: '900',
     color: colors.expense,
     marginTop: 2,
   },
   availableLimitValue: {
-    fontSize: 18, // Tăng 1px (cũ: 17)
+    fontSize: 15,
     fontWeight: '800',
     color: colors.textPrimary,
     marginTop: 2,
   },
   limitProgressSection: {
-    marginTop: 10,
+    marginTop: 8,
   },
   limitTrack: {
-    height: 6,
+    height: 5,
     backgroundColor: colors.track,
-    borderRadius: 3,
+    borderRadius: 2.5,
     overflow: 'hidden',
   },
   limitFill: {
     height: '100%',
-    borderRadius: 3,
+    borderRadius: 2.5,
   },
   limitLabelsRow: {
     flexDirection: 'row',
@@ -1191,18 +1325,18 @@ const styles = StyleSheet.create({
     marginTop: 4,
   },
   limitLabelLeft: {
-    fontSize: 11, // Tăng 1px (cũ: 10)
+    fontSize: 10,
     color: colors.textSecondary,
     fontWeight: '600',
   },
   limitLabelRight: {
-    fontSize: 11, // Tăng 1px (cũ: 10)
+    fontSize: 10,
     color: colors.textMuted,
   },
   cycleInfoRow: {
     flexDirection: 'row',
-    gap: 8,
-    marginTop: 10,
+    gap: 6,
+    marginTop: 8,
     flexWrap: 'wrap',
   },
   cycleBadge: {
@@ -1211,12 +1345,12 @@ const styles = StyleSheet.create({
     backgroundColor: colors.surfaceSecondary,
     borderWidth: 1,
     borderColor: colors.border,
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 8,
+    paddingHorizontal: 7,
+    paddingVertical: 3,
+    borderRadius: 7,
   },
   cycleBadgeText: {
-    fontSize: 12, // Tăng 1px (cũ: 11)
+    fontSize: 11,
     color: colors.textSecondary,
     fontWeight: '500',
   },
@@ -1227,12 +1361,12 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: 'rgba(245, 158, 11, 0.25)',
     borderRadius: 8,
-    paddingHorizontal: 9,
+    paddingHorizontal: 8,
     paddingVertical: 5,
     marginTop: 8,
   },
   feeWarningText: {
-    fontSize: 12, // Tăng 1px (cũ: 11)
+    fontSize: 11,
     color: colors.warning,
     fontWeight: '500',
     flex: 1,
@@ -1248,8 +1382,8 @@ const styles = StyleSheet.create({
   },
   modalBox: {
     backgroundColor: colors.surface,
-    borderRadius: 24,
-    padding: 18,
+    borderRadius: 20,
+    padding: 16,
     borderWidth: 1,
     borderColor: colors.border,
   },
@@ -1257,41 +1391,47 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 14,
+    marginBottom: 12,
   },
   modalBoxTitle: {
-    fontSize: 19, // Tăng 1px (cũ: 18)
+    fontSize: 17,
     fontWeight: '800',
     color: colors.textPrimary,
   },
   fieldLabel: {
-    fontSize: 13, // Tăng 1px (cũ: 12)
+    fontSize: 13,
     fontWeight: '600',
     color: colors.textSecondary,
     marginTop: 10,
-    marginBottom: 6,
+    marginBottom: 5,
   },
-  typeSelectorGrid: {
+  fieldLabelNoMargin: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: colors.textSecondary,
+  },
+  typeSelectorRow: {
     flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 6,
+    gap: 8,
   },
   typeGridBtn: {
-    width: '48.5%',
+    flex: 1,
     backgroundColor: colors.bg,
     borderWidth: 1,
     borderColor: colors.border,
-    borderRadius: 12,
-    paddingVertical: 9,
-    paddingHorizontal: 8,
+    borderRadius: 10,
+    paddingVertical: 8,
+    paddingHorizontal: 6,
     alignItems: 'center',
+    justifyContent: 'center',
+    minWidth: 0,
   },
   typeGridBtnSelected: {
     borderColor: colors.primaryBright,
     backgroundColor: colors.primarySoft,
   },
   typeGridLabel: {
-    fontSize: 12, // Tăng 1px (cũ: 11)
+    fontSize: 12,
     color: colors.textMuted,
     fontWeight: '600',
     textAlign: 'center',
@@ -1300,13 +1440,11 @@ const styles = StyleSheet.create({
     color: colors.primaryBright,
     fontWeight: '700',
   },
-
-  /* Logo selection section in modal */
   logoSection: {
-    marginTop: 6,
+    marginTop: 8,
     backgroundColor: 'rgba(255, 255, 255, 0.02)',
-    borderRadius: 14,
-    padding: 12,
+    borderRadius: 12,
+    padding: 10,
     borderWidth: 1,
     borderColor: 'rgba(255, 255, 255, 0.05)',
   },
@@ -1319,13 +1457,13 @@ const styles = StyleSheet.create({
   openPickerBtn: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingVertical: 4,
-    paddingHorizontal: 8,
+    paddingVertical: 3,
+    paddingHorizontal: 7,
     borderRadius: 6,
     backgroundColor: 'rgba(139, 92, 246, 0.1)',
   },
   openPickerBtnText: {
-    fontSize: 12, // Tăng 1px (cũ: 11)
+    fontSize: 11,
     color: colors.primaryBright,
     fontWeight: '600',
     marginRight: 2,
@@ -1334,30 +1472,35 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: '#0F111A',
-    borderRadius: 12,
-    padding: 10,
+    borderRadius: 10,
+    padding: 8,
     borderWidth: 1,
     borderColor: 'rgba(255, 255, 255, 0.07)',
-    marginBottom: 10,
+    marginBottom: 8,
+  },
+  selectedLogoTextCol: {
+    flex: 1,
+    marginLeft: 10,
+    minWidth: 0,
   },
   selectedLogoTitle: {
-    fontSize: 15, // Tăng 1px (cũ: 14)
+    fontSize: 14,
     fontWeight: '700',
     color: colors.textPrimary,
   },
   selectedLogoDesc: {
-    fontSize: 12, // Tăng 1px (cũ: 11)
+    fontSize: 11,
     color: colors.textMuted,
-    marginTop: 2,
+    marginTop: 1,
   },
   quickLogoLabel: {
-    fontSize: 12, // Tăng 1px (cũ: 11)
+    fontSize: 11,
     color: colors.textMuted,
     fontWeight: '500',
-    marginBottom: 6,
+    marginBottom: 5,
   },
   quickLogoScroll: {
-    gap: 8,
+    gap: 6,
     paddingBottom: 2,
   },
   quickLogoChip: {
@@ -1366,9 +1509,9 @@ const styles = StyleSheet.create({
     backgroundColor: '#0F111A',
     borderWidth: 1,
     borderColor: 'rgba(255, 255, 255, 0.07)',
-    borderRadius: 10,
-    paddingVertical: 6,
-    paddingHorizontal: 10,
+    borderRadius: 9,
+    paddingVertical: 5,
+    paddingHorizontal: 8,
     position: 'relative',
   },
   quickLogoChipSelected: {
@@ -1376,25 +1519,23 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(139, 92, 246, 0.12)',
   },
   quickLogoChipText: {
-    fontSize: 13, // Tăng 1px (cũ: 12)
+    fontSize: 12,
     color: colors.textSecondary,
     fontWeight: '600',
-    marginLeft: 6,
+    marginLeft: 5,
   },
   quickLogoChipTextSelected: {
     color: colors.primaryBright,
   },
   quickLogoCheck: {
     marginLeft: 4,
-    width: 14,
-    height: 14,
-    borderRadius: 7,
+    width: 12,
+    height: 12,
+    borderRadius: 6,
     backgroundColor: colors.primary,
     alignItems: 'center',
     justifyContent: 'center',
   },
-
-  /* E-wallet Subtype row */
   ewalletSubtypeRow: {
     flexDirection: 'row',
     gap: 8,
@@ -1408,15 +1549,16 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: colors.border,
     borderRadius: 10,
-    paddingVertical: 9,
+    paddingVertical: 8,
     paddingHorizontal: 6,
+    minWidth: 0,
   },
   ewalletSubtypeBtnActive: {
     borderColor: colors.primaryBright,
     backgroundColor: colors.primarySoft,
   },
   ewalletSubtypeText: {
-    fontSize: 12, // Tăng 1px (cũ: 11)
+    fontSize: 12,
     color: colors.textMuted,
     fontWeight: '600',
   },
@@ -1424,28 +1566,31 @@ const styles = StyleSheet.create({
     color: colors.textPrimary,
     fontWeight: '700',
   },
-
   textInput: {
     backgroundColor: colors.bg,
     borderWidth: 1,
     borderColor: colors.border,
     borderRadius: 12,
     paddingHorizontal: 12,
-    paddingVertical: 9,
-    fontSize: 14, // Tăng 1px (cũ: 13)
+    height: 44,
+    fontSize: 14,
     color: colors.textPrimary,
   },
   conditionalSection: {
-    gap: 4,
+    gap: 2,
   },
   dualFieldRow: {
     flexDirection: 'row',
-    gap: 10,
+    gap: 8,
+  },
+  dualFieldCol: {
+    flex: 1,
+    minWidth: 0,
   },
   modalActionButtons: {
     flexDirection: 'row',
     gap: 10,
-    marginTop: 20,
+    marginTop: 16,
   },
   cancelBtn: {
     flex: 1,
@@ -1456,7 +1601,7 @@ const styles = StyleSheet.create({
     backgroundColor: colors.track,
   },
   cancelBtnText: {
-    fontSize: 14, // Tăng 1px (cũ: 13)
+    fontSize: 14,
     color: colors.textSecondary,
     fontWeight: '600',
   },
@@ -1469,7 +1614,7 @@ const styles = StyleSheet.create({
     backgroundColor: colors.primary,
   },
   confirmBtnText: {
-    fontSize: 14, // Tăng 1px (cũ: 13)
+    fontSize: 14,
     color: '#FFFFFF',
     fontWeight: '700',
   },

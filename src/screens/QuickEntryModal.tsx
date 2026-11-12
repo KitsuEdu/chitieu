@@ -162,7 +162,7 @@ export const QuickEntryModal: React.FC<QuickEntryModalProps> = ({
   const handleSave = async () => {
     const amountNum = parseInt(amountStr, 10);
     if (!amountNum || amountNum <= 0) {
-      Alert.alert('Số tiền chưa hợp lệ', 'Vui lòng nhập số tiền lớn hơn 0 đ');
+      Alert.alert('Số tiền chưa hợp lệ', 'Vui lòng nhập số tiền lớn hơn 0 VND');
       return;
     }
 
