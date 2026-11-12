@@ -48,6 +48,9 @@ import {
   formatVietnameseDate,
 } from '../utils/calculator';
 import { colors } from '../theme/colors';
+import { SegmentedTabs, SegmentedTabItem } from '../components/SegmentedTabs';
+import { CustomDatePicker } from '../components/CustomDatePicker';
+import { usePopup } from '../context/PopupContext';
 
 interface QuickEntryModalProps {
   visible: boolean;
@@ -70,12 +73,37 @@ const triggerHaptic = () => {
   }
 };
 
+const QUICK_ENTRY_TABS: readonly SegmentedTabItem<TransactionType>[] = [
+  {
+    key: 'EXPENSE',
+    label: 'Khoản chi',
+    activeColor: '#FB7185',
+    activeBgColor: 'rgba(244, 63, 94, 0.2)',
+    activeBorderColor: 'rgba(244, 63, 94, 0.5)',
+  },
+  {
+    key: 'INCOME',
+    label: 'Khoản thu',
+    activeColor: '#34D399',
+    activeBgColor: 'rgba(16, 185, 129, 0.2)',
+    activeBorderColor: 'rgba(16, 185, 129, 0.5)',
+  },
+  {
+    key: 'TRANSFER',
+    label: 'Chuyển khoản/Trả nợ',
+    activeColor: '#C084FC',
+    activeBgColor: 'rgba(139, 92, 246, 0.2)',
+    activeBorderColor: 'rgba(168, 85, 247, 0.45)',
+  },
+];
+
 export const QuickEntryModal: React.FC<QuickEntryModalProps> = ({
   visible,
   onClose,
   onTransactionSaved,
   initialPreset,
 }) => {
+  const { showPopup } = usePopup();
   const [expression, setExpression] = useState<string>('0');
   const [type, setType] = useState<TransactionType>('EXPENSE');
   const [category, setCategory] = useState<string>(CATEGORIES[0]);
@@ -83,6 +111,7 @@ export const QuickEntryModal: React.FC<QuickEntryModalProps> = ({
   const [wallets, setWallets] = useState<Wallet[]>([]);
   const [note, setNote] = useState<string>('');
   const [selectedDate, setSelectedDate] = useState<Date>(new Date());
+  const [isDatePickerVisible, setIsDatePickerVisible] = useState<boolean>(false);
 
   const [isAmountFocused, setIsAmountFocused] = useState<boolean>(false);
   const [isNoteFocused, setIsNoteFocused] = useState<boolean>(false);
@@ -276,7 +305,11 @@ export const QuickEntryModal: React.FC<QuickEntryModalProps> = ({
   const handleSave = async () => {
     const finalAmount = evaluateExpression(expression);
     if (!finalAmount || finalAmount <= 0) {
-      Alert.alert('Số tiền chưa hợp lệ', 'Vui lòng nhập số tiền lớn hơn 0 VND');
+      showPopup({
+        type: 'WARNING',
+        title: 'Số tiền chưa hợp lệ',
+        message: 'Vui lòng nhập số tiền lớn hơn 0 VND',
+      });
       return;
     }
 
@@ -297,7 +330,11 @@ export const QuickEntryModal: React.FC<QuickEntryModalProps> = ({
       onTransactionSaved();
       handleClose();
     } catch {
-      Alert.alert('Lỗi', 'Không thể lưu giao dịch vào bộ nhớ máy');
+      showPopup({
+        type: 'ERROR',
+        title: 'Lỗi',
+        message: 'Không thể lưu giao dịch vào bộ nhớ máy. Vui lòng thử lại.',
+      });
     }
   };
 
@@ -352,70 +389,14 @@ export const QuickEntryModal: React.FC<QuickEntryModalProps> = ({
             showsVerticalScrollIndicator={false}
           >
             {/* 1. Segmented Tabs: [Khoản chi] | [Khoản thu] | [Chuyển khoản/Trả nợ] */}
-            <View style={styles.segmentedContainer}>
-              <TouchableOpacity
-                style={[
-                  styles.segmentTab,
-                  type === 'EXPENSE' && styles.segmentTabExpenseActive,
-                ]}
-                onPress={() => {
-                  triggerHaptic();
-                  setType('EXPENSE');
-                }}
-                activeOpacity={0.8}
-              >
-                <Text
-                  style={[
-                    styles.segmentText,
-                    type === 'EXPENSE' && styles.segmentTextExpenseActive,
-                  ]}
-                >
-                  Khoản chi
-                </Text>
-              </TouchableOpacity>
-
-              <TouchableOpacity
-                style={[
-                  styles.segmentTab,
-                  type === 'INCOME' && styles.segmentTabIncomeActive,
-                ]}
-                onPress={() => {
-                  triggerHaptic();
-                  setType('INCOME');
-                }}
-                activeOpacity={0.8}
-              >
-                <Text
-                  style={[
-                    styles.segmentText,
-                    type === 'INCOME' && styles.segmentTextIncomeActive,
-                  ]}
-                >
-                  Khoản thu
-                </Text>
-              </TouchableOpacity>
-
-              <TouchableOpacity
-                style={[
-                  styles.segmentTab,
-                  type === 'TRANSFER' && styles.segmentTabTransferActive,
-                ]}
-                onPress={() => {
-                  triggerHaptic();
-                  setType('TRANSFER');
-                }}
-                activeOpacity={0.8}
-              >
-                <Text
-                  style={[
-                    styles.segmentText,
-                    type === 'TRANSFER' && styles.segmentTextTransferActive,
-                  ]}
-                >
-                  Chuyển khoản/Trả nợ
-                </Text>
-              </TouchableOpacity>
-            </View>
+            <SegmentedTabs<TransactionType>
+              tabs={QUICK_ENTRY_TABS}
+              activeKey={type}
+              onChange={(newType) => {
+                setType(newType);
+              }}
+              containerStyle={{ marginBottom: 16 }}
+            />
 
             {/* 2. Row: Chọn Ví */}
             <TouchableOpacity
@@ -564,9 +545,14 @@ export const QuickEntryModal: React.FC<QuickEntryModalProps> = ({
                   <ChevronLeft size={20} color="#34D399" />
                 </TouchableOpacity>
 
-                <Text style={styles.dateDisplayValue}>
-                  {formatVietnameseDate(selectedDate)}
-                </Text>
+                <TouchableOpacity
+                  onPress={() => setIsDatePickerVisible(true)}
+                  activeOpacity={0.7}
+                >
+                  <Text style={styles.dateDisplayValue}>
+                    {formatVietnameseDate(selectedDate)}
+                  </Text>
+                </TouchableOpacity>
 
                 <TouchableOpacity
                   style={styles.dateArrowBtn}
@@ -626,6 +612,15 @@ export const QuickEntryModal: React.FC<QuickEntryModalProps> = ({
           selectedCategory={category}
           onClose={() => setIsCategoryModalOpen(false)}
           onSelectCategory={(c) => setCategory(c)}
+        />
+
+        {/* Modal Chọn Ngày */}
+        <CustomDatePicker
+          visible={isDatePickerVisible}
+          onClose={() => setIsDatePickerVisible(false)}
+          mode="DATE"
+          value={selectedDate}
+          onConfirm={(d: Date) => setSelectedDate(d)}
         />
       </Animated.View>
     </View>
@@ -690,47 +685,6 @@ const styles = StyleSheet.create({
     paddingTop: 14,
     paddingBottom: 16,
     gap: 16,
-  },
-  segmentedContainer: {
-    flexDirection: 'row',
-    backgroundColor: '#161926',
-    borderRadius: 22,
-    padding: 3,
-    borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.07)',
-  },
-  segmentTab: {
-    flex: 1,
-    paddingVertical: 9,
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderRadius: 18,
-  },
-  segmentTabExpenseActive: {
-    backgroundColor: '#1E252B',
-  },
-  segmentTabIncomeActive: {
-    backgroundColor: '#1E252B',
-  },
-  segmentTabTransferActive: {
-    backgroundColor: '#201D33',
-  },
-  segmentText: {
-    fontSize: 13,
-    fontWeight: '600',
-    color: '#94A3B8',
-  },
-  segmentTextExpenseActive: {
-    color: '#34D399',
-    fontWeight: '700',
-  },
-  segmentTextIncomeActive: {
-    color: '#34D399',
-    fontWeight: '700',
-  },
-  segmentTextTransferActive: {
-    color: '#A855F7',
-    fontWeight: '700',
   },
   formRow: {
     flexDirection: 'row',

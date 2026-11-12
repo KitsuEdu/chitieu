@@ -7,13 +7,16 @@ import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { OverviewScreen, QuickPreset } from './src/screens/OverviewScreen';
 import { WalletsScreen } from './src/screens/WalletsScreen';
 import { HistoryScreen } from './src/screens/HistoryScreen';
+import { ProfileScreen } from './src/screens/ProfileScreen';
 import { SettingsScreen } from './src/screens/SettingsScreen';
 import { QuickEntryScreen } from './src/screens/QuickEntryScreen';
 import { LiquidNavBar, MainTabType } from './src/components/LiquidNavBar';
+import { PopupProvider } from './src/context/PopupContext';
 import { colors } from './src/theme/colors';
 
 export default function App() {
   const [currentTab, setCurrentTab] = useState<MainTabType>('OVERVIEW');
+  const [profileSubScreen, setProfileSubScreen] = useState<'MAIN' | 'SETTINGS'>('MAIN');
   const [quickEntryPreset, setQuickEntryPreset] = useState<QuickPreset | null>(null);
   const [dataVersion, setDataVersion] = useState<number>(0);
 
@@ -26,10 +29,25 @@ export default function App() {
     setCurrentTab('QUICK_ENTRY');
   };
 
+  const handleNavigateToSettings = () => {
+    setCurrentTab('PROFILE');
+    setProfileSubScreen('SETTINGS');
+  };
+
+  const handleSelectTab = (tab: MainTabType) => {
+    if (tab === 'PROFILE' || tab === 'SETTINGS') {
+      setProfileSubScreen('MAIN');
+      setCurrentTab('PROFILE');
+    } else {
+      setCurrentTab(tab);
+    }
+  };
+
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>
       <SafeAreaProvider>
-        <SafeAreaView style={styles.safeArea} edges={['top', 'left', 'right']}>
+        <PopupProvider>
+          <SafeAreaView style={styles.safeArea} edges={['top', 'left', 'right']}>
           <StatusBar style="light" />
 
           {/* Nội dung Màn hình chính theo Tab */}
@@ -39,7 +57,7 @@ export default function App() {
                 key={`overview-${dataVersion}`}
                 onNavigateToHistory={() => setCurrentTab('HISTORY')}
                 onNavigateToWallets={() => setCurrentTab('WALLETS')}
-                onNavigateToSettings={() => setCurrentTab('SETTINGS')}
+                onNavigateToSettings={handleNavigateToSettings}
                 onOpenQuickEntry={handleOpenQuickEntry}
               />
             )}
@@ -70,21 +88,31 @@ export default function App() {
               />
             )}
 
-            {currentTab === 'SETTINGS' && (
-              <SettingsScreen
-                key={`settings-${dataVersion}`}
-                onSettingsSaved={handleDataChanged}
-              />
+            {(currentTab === 'PROFILE' || currentTab === 'SETTINGS') && (
+              profileSubScreen === 'SETTINGS' ? (
+                <SettingsScreen
+                  key={`settings-${dataVersion}`}
+                  onSettingsSaved={handleDataChanged}
+                  onBack={() => setProfileSubScreen('MAIN')}
+                />
+              ) : (
+                <ProfileScreen
+                  key={`profile-${dataVersion}`}
+                  onNavigateToSettings={() => setProfileSubScreen('SETTINGS')}
+                  onDataChanged={handleDataChanged}
+                />
+              )
             )}
           </View>
 
           {/* Thanh Bottom Navigation: Bouncing Ball Tab Animation (Navbar luôn ở phía dưới) */}
           <LiquidNavBar
-            currentTab={currentTab}
-            onSelectTab={setCurrentTab}
+            currentTab={currentTab === 'SETTINGS' ? 'PROFILE' : currentTab}
+            onSelectTab={handleSelectTab}
             onPressPlus={() => handleOpenQuickEntry()}
           />
         </SafeAreaView>
+        </PopupProvider>
       </SafeAreaProvider>
     </GestureHandlerRootView>
   );

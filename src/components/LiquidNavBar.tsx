@@ -21,11 +21,11 @@ import {
   LayoutDashboard,
   Wallet,
   ReceiptText,
-  Settings,
+  UserRound,
   Plus,
 } from 'lucide-react-native';
 
-export type MainTabType = 'OVERVIEW' | 'WALLETS' | 'QUICK_ENTRY' | 'HISTORY' | 'SETTINGS';
+export type MainTabType = 'OVERVIEW' | 'WALLETS' | 'QUICK_ENTRY' | 'HISTORY' | 'PROFILE' | 'SETTINGS';
 
 interface LiquidNavBarProps {
   currentTab: MainTabType;
@@ -73,6 +73,7 @@ export const LiquidNavBar: React.FC<LiquidNavBarProps> = ({
         return 2;
       case 'HISTORY':
         return 3;
+      case 'PROFILE':
       case 'SETTINGS':
         return 4;
       default:
@@ -223,7 +224,7 @@ export const LiquidNavBar: React.FC<LiquidNavBarProps> = ({
       targetTab = 'QUICK_ENTRY';
     }
     else if (idx === 3) targetTab = 'HISTORY';
-    else if (idx === 4) targetTab = 'SETTINGS';
+    else if (idx === 4) targetTab = 'PROFILE';
 
     onSelectTab(targetTab);
   };
@@ -321,7 +322,7 @@ export const LiquidNavBar: React.FC<LiquidNavBarProps> = ({
       case 3:
         return <ReceiptText size={21} color="#FFFFFF" strokeWidth={2.2} />;
       case 4:
-        return <Settings size={21} color="#FFFFFF" strokeWidth={2.2} />;
+        return <UserRound size={21} color="#FFFFFF" strokeWidth={2.2} />;
       default:
         return <LayoutDashboard size={21} color="#FFFFFF" strokeWidth={2.2} />;
     }
@@ -407,14 +408,14 @@ export const LiquidNavBar: React.FC<LiquidNavBarProps> = ({
           </Animated.View>
         </Pressable>
 
-        {/* Tab 4: Cài đặt */}
+        {/* Tab 4: Hồ sơ & Tiện ích */}
         <Pressable
           style={styles.tabItem}
           onPress={() => handlePressTab(4)}
           hitSlop={{ top: 12, bottom: 12 }}
         >
           <Animated.View style={tab4Style}>
-            <Settings size={22} color="#64748B" />
+            <UserRound size={22} color="#64748B" />
           </Animated.View>
         </Pressable>
       </View>

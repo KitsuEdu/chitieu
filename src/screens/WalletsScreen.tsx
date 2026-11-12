@@ -10,7 +10,7 @@ import {
   Alert,
   RefreshControl,
 } from 'react-native';
-import Animated, { FadeInDown } from 'react-native-reanimated';
+import Animated, { FadeInDown, LinearTransition } from 'react-native-reanimated';
 import { SvgXml } from 'react-native-svg';
 import {
   Wallet as WalletIcon,
@@ -38,21 +38,25 @@ import { colors } from '../theme/colors';
 import { WalletLogo } from '../components/WalletLogo';
 import { LogoPickerModal } from '../components/LogoPickerModal';
 import { CurrencyInput } from '../components/CurrencyInput';
+import { WalletFilterTabs, WalletFilterMode } from '../components/WalletFilterTabs';
+import { CustomDatePicker } from '../components/CustomDatePicker';
 import {
   BANK_LOGOS,
   EWALLET_LOGOS,
   getLogoById,
   WalletLogoItem,
 } from '../constants/logos';
+import { usePopup } from '../context/PopupContext';
 
 interface WalletsScreenProps {
   onWalletsUpdated?: () => void;
 }
 
 export const WalletsScreen: React.FC<WalletsScreenProps> = ({ onWalletsUpdated }) => {
+  const { showPopup, showConfirm } = usePopup();
   const [wallets, setWallets] = useState<Wallet[]>([]);
   const [transactions, setTransactions] = useState<Transaction[]>([]);
-  const [filterMode, setFilterMode] = useState<'ALL' | 'ASSETS' | 'LIABILITIES'>('ALL');
+  const [filterMode, setFilterMode] = useState<WalletFilterMode>('ALL');
   const [isRefreshing, setIsRefreshing] = useState<boolean>(false);
 
   // Modal State
@@ -76,6 +80,7 @@ export const WalletsScreen: React.FC<WalletsScreenProps> = ({ onWalletsUpdated }
   const [statementDateStr, setStatementDateStr] = useState<string>('');
   const [dueDateStr, setDueDateStr] = useState<string>('');
   const [feeWarningNote, setFeeWarningNote] = useState<string>('');
+  const [dayPickerTarget, setDayPickerTarget] = useState<'STATEMENT' | 'DUE' | null>(null);
 
   const loadData = useCallback(async () => {
     try {
@@ -241,7 +246,11 @@ export const WalletsScreen: React.FC<WalletsScreenProps> = ({ onWalletsUpdated }
   const handleSaveWallet = async () => {
     const trimmedName = walletName.trim();
     if (!trimmedName) {
-      Alert.alert('Thiếu thông tin', 'Vui lòng nhập tên ví / tài khoản');
+      showPopup({
+        type: 'WARNING',
+        title: 'Thiếu thông tin',
+        message: 'Vui lòng nhập tên ví / tài khoản',
+      });
       return;
     }
 
@@ -288,36 +297,44 @@ export const WalletsScreen: React.FC<WalletsScreenProps> = ({ onWalletsUpdated }
       await loadData();
       onWalletsUpdated?.();
     } catch {
-      Alert.alert('Lỗi', 'Không thể lưu thông tin ví');
+      showPopup({
+        type: 'ERROR',
+        title: 'Lỗi',
+        message: 'Không thể lưu thông tin ví. Vui lòng thử lại.',
+      });
     }
   };
 
   const handleDeleteWallet = (w: Wallet) => {
     if (wallets.length <= 1) {
-      Alert.alert('Không thể xóa', 'Bạn cần giữ lại ít nhất một ví');
+      showPopup({
+        type: 'WARNING',
+        title: 'Không thể xóa',
+        message: 'Bạn cần giữ lại ít nhất một ví để ghi nhận các giao dịch.',
+      });
       return;
     }
 
-    Alert.alert(
-      'Xóa ví / tài khoản',
-      `Bạn có chắc chắn muốn xóa ví "${w.name}"? Dữ liệu lịch sử giao dịch liên quan vẫn được bảo lưu an toàn.`,
-      [
-        { text: 'Hủy', style: 'cancel' },
-        {
-          text: 'Xóa',
-          style: 'destructive',
-          onPress: async () => {
-            try {
-              await storageService.deleteWallet(w.id);
-              await loadData();
-              onWalletsUpdated?.();
-            } catch {
-              Alert.alert('Lỗi', 'Không thể xóa ví');
-            }
-          },
-        },
-      ]
-    );
+    showConfirm({
+      type: 'DANGER',
+      title: 'Xóa ví / tài khoản',
+      message: `Bạn có chắc chắn muốn xóa ví "${w.name}"? Dữ liệu lịch sử giao dịch liên quan vẫn được bảo lưu an toàn.`,
+      confirmText: 'Xóa ví',
+      cancelText: 'Hủy',
+      onConfirm: async () => {
+        try {
+          await storageService.deleteWallet(w.id);
+          await loadData();
+          onWalletsUpdated?.();
+        } catch {
+          showPopup({
+            type: 'ERROR',
+            title: 'Lỗi',
+            message: 'Không thể xóa ví. Vui lòng thử lại.',
+          });
+        }
+      },
+    });
   };
 
   const getWalletTypeBadge = (type: WalletType) => {
@@ -429,34 +446,11 @@ export const WalletsScreen: React.FC<WalletsScreenProps> = ({ onWalletsUpdated }
           </View>
         </View>
 
-        {/* Segmented Filter: Nhãn súc tích, vừa khít mọi bề rộng màn hình */}
-        <View style={styles.filterBar}>
-          {[
-            { mode: 'ALL' as const, label: 'Tất cả' },
-            { mode: 'ASSETS' as const, label: 'Khả dụng' },
-            { mode: 'LIABILITIES' as const, label: 'Tín dụng / Nợ' },
-          ].map((item) => {
-            const isSelected = filterMode === item.mode;
-            return (
-              <TouchableOpacity
-                key={item.mode}
-                style={[styles.filterChip, isSelected && styles.filterChipActive]}
-                onPress={() => setFilterMode(item.mode)}
-                activeOpacity={0.7}
-              >
-                <Text
-                  style={[
-                    styles.filterChipText,
-                    isSelected && styles.filterChipTextActive,
-                  ]}
-                  numberOfLines={1}
-                >
-                  {item.label}
-                </Text>
-              </TouchableOpacity>
-            );
-          })}
-        </View>
+        {/* Segmented Filter: Gooey Liquid Stretch & Slide */}
+        <WalletFilterTabs
+          filterMode={filterMode}
+          onChangeFilterMode={setFilterMode}
+        />
 
         {/* Danh sách thẻ ví: Flat Matte Dark Solid Color */}
         <View style={styles.cardsList}>
@@ -467,8 +461,9 @@ export const WalletsScreen: React.FC<WalletsScreenProps> = ({ onWalletsUpdated }
 
             return (
               <Animated.View
-                key={w.id}
-                entering={FadeInDown.delay(index * 50).duration(300)}
+                key={`${filterMode}-${w.id}`}
+                entering={FadeInDown.delay(Math.min(index * 40, 160)).duration(260)}
+                layout={LinearTransition.springify().damping(18).stiffness(140)}
                 style={styles.cardWrapper}
               >
                 <View style={styles.cardInner}>
@@ -929,28 +924,44 @@ export const WalletsScreen: React.FC<WalletsScreenProps> = ({ onWalletsUpdated }
                       <Text style={styles.fieldLabel} numberOfLines={1}>
                         Ngày chốt sao kê
                       </Text>
-                      <CurrencyInput
-                        value={statementDateStr ? parseInt(statementDateStr, 10) : ''}
-                        onChangeValue={(val) => setStatementDateStr(val > 0 ? val.toString() : '')}
-                        placeholder="VD: 25"
-                        suffix=""
-                        maxLength={2}
-                        allowClear={false}
-                      />
+                      <TouchableOpacity
+                        style={styles.dayPickerButton}
+                        onPress={() => setDayPickerTarget('STATEMENT')}
+                        activeOpacity={0.7}
+                      >
+                        <Calendar size={16} color={statementDateStr ? '#C084FC' : '#94A3B8'} style={{ marginRight: 6 }} />
+                        <Text
+                          style={[
+                            styles.dayPickerText,
+                            !!statementDateStr && styles.dayPickerTextActive,
+                          ]}
+                          numberOfLines={1}
+                        >
+                          {statementDateStr ? `Ngày ${statementDateStr}` : 'Chọn ngày'}
+                        </Text>
+                      </TouchableOpacity>
                     </View>
 
                     <View style={styles.dualFieldCol}>
                       <Text style={styles.fieldLabel} numberOfLines={1}>
                         Hạn thanh toán
                       </Text>
-                      <CurrencyInput
-                        value={dueDateStr ? parseInt(dueDateStr, 10) : ''}
-                        onChangeValue={(val) => setDueDateStr(val > 0 ? val.toString() : '')}
-                        placeholder="VD: 10"
-                        suffix=""
-                        maxLength={2}
-                        allowClear={false}
-                      />
+                      <TouchableOpacity
+                        style={styles.dayPickerButton}
+                        onPress={() => setDayPickerTarget('DUE')}
+                        activeOpacity={0.7}
+                      >
+                        <Calendar size={16} color={dueDateStr ? '#C084FC' : '#94A3B8'} style={{ marginRight: 6 }} />
+                        <Text
+                          style={[
+                            styles.dayPickerText,
+                            !!dueDateStr && styles.dayPickerTextActive,
+                          ]}
+                          numberOfLines={1}
+                        >
+                          {dueDateStr ? `Ngày ${dueDateStr}` : 'Chọn ngày'}
+                        </Text>
+                      </TouchableOpacity>
                     </View>
                   </View>
 
@@ -1004,6 +1015,31 @@ export const WalletsScreen: React.FC<WalletsScreenProps> = ({ onWalletsUpdated }
         selectedLogoId={selectedLogoId}
         onClose={() => setLogoPickerVisible(false)}
         onSelectLogo={handleSelectLogo}
+      />
+
+      {/* Modal Chọn Ngày Trong Tháng (Sao kê / Đến hạn) */}
+      <CustomDatePicker
+        visible={dayPickerTarget !== null}
+        onClose={() => setDayPickerTarget(null)}
+        mode="DAY_OF_MONTH"
+        title={
+          dayPickerTarget === 'STATEMENT'
+            ? 'Chọn ngày chốt sao kê'
+            : 'Chọn ngày đến hạn thanh toán'
+        }
+        value={
+          dayPickerTarget === 'STATEMENT'
+            ? parseInt(statementDateStr, 10) || 25
+            : parseInt(dueDateStr, 10) || 10
+        }
+        onConfirm={(day: number) => {
+          if (dayPickerTarget === 'STATEMENT') {
+            setStatementDateStr(day.toString());
+          } else {
+            setDueDateStr(day.toString());
+          }
+          setDayPickerTarget(null);
+        }}
       />
     </View>
   );
@@ -1116,36 +1152,6 @@ const styles = StyleSheet.create({
     backgroundColor: colors.border,
     marginHorizontal: 8,
     flexShrink: 0,
-  },
-  filterBar: {
-    flexDirection: 'row',
-    backgroundColor: colors.surface,
-    borderRadius: 11,
-    padding: 3,
-    marginBottom: 12,
-    gap: 4,
-    borderWidth: 1,
-    borderColor: colors.border,
-  },
-  filterChip: {
-    flex: 1,
-    paddingVertical: 6,
-    borderRadius: 8,
-    alignItems: 'center',
-    justifyContent: 'center',
-    minWidth: 0,
-  },
-  filterChipActive: {
-    backgroundColor: colors.primarySoft,
-  },
-  filterChipText: {
-    fontSize: 13, // Tăng thêm 1 size
-    color: colors.textSecondary,
-    fontWeight: '600',
-  },
-  filterChipTextActive: {
-    color: colors.primaryBright,
-    fontWeight: '700',
   },
   cardsList: {
     gap: 10,
@@ -1556,6 +1562,25 @@ const styles = StyleSheet.create({
   dualFieldCol: {
     flex: 1,
     minWidth: 0,
+  },
+  dayPickerButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: colors.bg,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: 12,
+    paddingHorizontal: 12,
+    height: 46,
+  },
+  dayPickerText: {
+    fontSize: 14,
+    color: colors.textMuted,
+    fontWeight: '500',
+  },
+  dayPickerTextActive: {
+    color: '#C084FC',
+    fontWeight: '700',
   },
   modalActionButtons: {
     flexDirection: 'row',

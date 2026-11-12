@@ -14,16 +14,20 @@ import {
   Code2,
   Send,
   HelpCircle,
+  ArrowLeft,
 } from 'lucide-react-native';
 import { storageService } from '../services/storage';
 import { syncService } from '../services/sync';
 import { colors } from '../theme/colors';
+import { usePopup } from '../context/PopupContext';
 
 interface SettingsScreenProps {
   onSettingsSaved?: () => void;
+  onBack?: () => void;
 }
 
-export const SettingsScreen: React.FC<SettingsScreenProps> = ({ onSettingsSaved }) => {
+export const SettingsScreen: React.FC<SettingsScreenProps> = ({ onSettingsSaved, onBack }) => {
+  const { showPopup } = usePopup();
   const [googleScriptUrl, setGoogleScriptUrl] = useState<string>('');
   const [apiToken, setApiToken] = useState<string>('');
   const [isTesting, setIsTesting] = useState<boolean>(false);
@@ -62,10 +66,19 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({ onSettingsSaved 
         googleScriptUrl: googleScriptUrl.trim(),
         apiToken: apiToken.trim(),
       });
-      Alert.alert('Thành công', 'Đã lưu cấu hình Google Apps Script!');
+      showPopup({
+        type: 'SUCCESS',
+        title: 'Thành công',
+        message: 'Đã lưu cấu hình Google Apps Script an toàn vào bộ nhớ máy!',
+        confirmText: 'Tuyệt vời',
+      });
       onSettingsSaved?.();
     } catch {
-      Alert.alert('Lỗi', 'Không thể lưu cài đặt.');
+      showPopup({
+        type: 'ERROR',
+        title: 'Lỗi',
+        message: 'Không thể lưu cài đặt. Vui lòng thử lại.',
+      });
     } finally {
       setIsSaving(false);
     }
@@ -73,7 +86,11 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({ onSettingsSaved 
 
   const handleTestConnection = async () => {
     if (!googleScriptUrl.trim()) {
-      Alert.alert('Thiếu thông tin', 'Vui lòng nhập Google Apps Script URL trước khi kiểm tra');
+      showPopup({
+        type: 'WARNING',
+        title: 'Thiếu thông tin',
+        message: 'Vui lòng nhập Google Apps Script URL trước khi kiểm tra kết nối',
+      });
       return;
     }
 
@@ -137,6 +154,17 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({ onSettingsSaved 
     <ScrollView style={styles.container} contentContainerStyle={styles.contentContainer}>
       {/* 1. Header Cài đặt */}
       <View style={styles.header}>
+        {onBack && (
+          <TouchableOpacity
+            style={styles.backButton}
+            onPress={onBack}
+            activeOpacity={0.7}
+            hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+          >
+            <ArrowLeft size={18} color={colors.primaryLight} strokeWidth={2.4} />
+            <Text style={styles.backButtonText}>Cài đặt</Text>
+          </TouchableOpacity>
+        )}
         <Text style={styles.title}>Cài đặt đồng bộ</Text>
         <Text style={styles.subtitle}>
           Kết nối ứng dụng với Google Sheets thông qua Google Apps Script Web App
@@ -306,6 +334,20 @@ const styles = StyleSheet.create({
   },
   header: {
     paddingVertical: 8,
+  },
+  backButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    alignSelf: 'flex-start',
+    marginBottom: 8,
+    paddingVertical: 4,
+    paddingHorizontal: 2,
+  },
+  backButtonText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: colors.primaryLight,
   },
   title: {
     fontSize: 22,

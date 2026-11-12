@@ -47,6 +47,9 @@ import {
 } from '../utils/calculator';
 import { formatVND } from '../utils/format';
 import { colors } from '../theme/colors';
+import { SegmentedTabs, SegmentedTabItem } from '../components/SegmentedTabs';
+import { CustomDatePicker } from '../components/CustomDatePicker';
+import { usePopup } from '../context/PopupContext';
 
 export interface QuickPreset {
   category?: string;
@@ -68,10 +71,35 @@ const triggerHaptic = () => {
   }
 };
 
+const QUICK_ENTRY_TABS: readonly SegmentedTabItem<TransactionType>[] = [
+  {
+    key: 'EXPENSE',
+    label: 'Khoản chi',
+    activeColor: '#FB7185',
+    activeBgColor: 'rgba(244, 63, 94, 0.2)',
+    activeBorderColor: 'rgba(244, 63, 94, 0.5)',
+  },
+  {
+    key: 'INCOME',
+    label: 'Khoản thu',
+    activeColor: '#34D399',
+    activeBgColor: 'rgba(16, 185, 129, 0.2)',
+    activeBorderColor: 'rgba(16, 185, 129, 0.5)',
+  },
+  {
+    key: 'TRANSFER',
+    label: 'Chuyển khoản',
+    activeColor: '#C084FC',
+    activeBgColor: 'rgba(139, 92, 246, 0.2)',
+    activeBorderColor: 'rgba(168, 85, 247, 0.45)',
+  },
+];
+
 export const QuickEntryScreen: React.FC<QuickEntryScreenProps> = ({
   initialPreset,
   onTransactionSaved,
 }) => {
+  const { showPopup } = usePopup();
   const insets = useSafeAreaInsets();
 
   const [expression, setExpression] = useState<string>('0');
@@ -81,6 +109,7 @@ export const QuickEntryScreen: React.FC<QuickEntryScreenProps> = ({
   const [wallets, setWallets] = useState<Wallet[]>([]);
   const [note, setNote] = useState<string>('');
   const [selectedDate, setSelectedDate] = useState<Date>(new Date());
+  const [isDatePickerVisible, setIsDatePickerVisible] = useState<boolean>(false);
 
   const [isAmountFocused, setIsAmountFocused] = useState<boolean>(false);
   const [isNoteFocused, setIsNoteFocused] = useState<boolean>(false);
@@ -246,12 +275,20 @@ export const QuickEntryScreen: React.FC<QuickEntryScreenProps> = ({
   const handleSave = async () => {
     const evaluatedAmount = evaluateExpression(expression);
     if (!evaluatedAmount || evaluatedAmount <= 0) {
-      Alert.alert('Số tiền chưa hợp lệ', 'Vui lòng nhập số tiền lớn hơn 0 VND');
+      showPopup({
+        type: 'WARNING',
+        title: 'Số tiền chưa hợp lệ',
+        message: 'Vui lòng nhập số tiền lớn hơn 0 VND',
+      });
       return;
     }
 
     if (!selectedWallet) {
-      Alert.alert('Chưa chọn ví', 'Vui lòng chọn ví để ghi nhận giao dịch');
+      showPopup({
+        type: 'WARNING',
+        title: 'Chưa chọn ví',
+        message: 'Vui lòng chọn ví để ghi nhận giao dịch',
+      });
       return;
     }
 
@@ -292,7 +329,11 @@ export const QuickEntryScreen: React.FC<QuickEntryScreenProps> = ({
       // Đồng bộ ngầm
       syncService.syncPendingTransactions();
     } catch {
-      Alert.alert('Lỗi', 'Không thể lưu giao dịch vào máy');
+      showPopup({
+        type: 'ERROR',
+        title: 'Lỗi',
+        message: 'Không thể lưu giao dịch vào máy. Vui lòng thử lại.',
+      });
     }
   };
 
@@ -324,73 +365,15 @@ export const QuickEntryScreen: React.FC<QuickEntryScreenProps> = ({
         </View>
 
         {/* 1. Segmented Tabs: [Khoản chi] | [Khoản thu] | [Chuyển khoản] */}
-        <View style={styles.segmentedContainer}>
-          <TouchableOpacity
-            style={[
-              styles.segmentTab,
-              type === 'EXPENSE' && styles.segmentTabExpenseActive,
-            ]}
-            onPress={() => {
-              triggerHaptic();
-              setType('EXPENSE');
-              setIsAmountFocused(false);
-            }}
-            activeOpacity={0.8}
-          >
-            <Text
-              style={[
-                styles.segmentText,
-                type === 'EXPENSE' && styles.segmentTextExpenseActive,
-              ]}
-            >
-              Khoản chi
-            </Text>
-          </TouchableOpacity>
-
-          <TouchableOpacity
-            style={[
-              styles.segmentTab,
-              type === 'INCOME' && styles.segmentTabIncomeActive,
-            ]}
-            onPress={() => {
-              triggerHaptic();
-              setType('INCOME');
-              setIsAmountFocused(false);
-            }}
-            activeOpacity={0.8}
-          >
-            <Text
-              style={[
-                styles.segmentText,
-                type === 'INCOME' && styles.segmentTextIncomeActive,
-              ]}
-            >
-              Khoản thu
-            </Text>
-          </TouchableOpacity>
-
-          <TouchableOpacity
-            style={[
-              styles.segmentTab,
-              type === 'TRANSFER' && styles.segmentTabTransferActive,
-            ]}
-            onPress={() => {
-              triggerHaptic();
-              setType('TRANSFER');
-              setIsAmountFocused(false);
-            }}
-            activeOpacity={0.8}
-          >
-            <Text
-              style={[
-                styles.segmentText,
-                type === 'TRANSFER' && styles.segmentTextTransferActive,
-              ]}
-            >
-              Chuyển khoản
-            </Text>
-          </TouchableOpacity>
-        </View>
+        <SegmentedTabs<TransactionType>
+          tabs={QUICK_ENTRY_TABS}
+          activeKey={type}
+          onChange={(newType) => {
+            setType(newType);
+            setIsAmountFocused(false);
+          }}
+          containerStyle={{ marginBottom: 16 }}
+        />
 
         {/* 2. Form Box chính */}
         <View style={styles.formCard}>
@@ -547,7 +530,15 @@ export const QuickEntryScreen: React.FC<QuickEntryScreenProps> = ({
 
           {/* Row 5: Chọn Ngày */}
           <View style={styles.dateRow}>
-            <View style={styles.rowLeft}>
+            <TouchableOpacity
+              style={styles.rowLeft}
+              onPress={() => {
+                Keyboard.dismiss();
+                setIsAmountFocused(false);
+                setIsDatePickerVisible(true);
+              }}
+              activeOpacity={0.7}
+            >
               <View style={styles.rowIconContainer}>
                 <Calendar size={22} color="#94A3B8" />
               </View>
@@ -557,7 +548,7 @@ export const QuickEntryScreen: React.FC<QuickEntryScreenProps> = ({
                   {formatVietnameseDate(selectedDate)}
                 </Text>
               </View>
-            </View>
+            </TouchableOpacity>
 
             <View style={styles.dateSelectorPill}>
               <TouchableOpacity
@@ -675,6 +666,15 @@ export const QuickEntryScreen: React.FC<QuickEntryScreenProps> = ({
         onClose={() => setIsCategoryModalOpen(false)}
         onSelectCategory={(c) => setCategory(c)}
       />
+
+      {/* Modal Chọn Ngày */}
+      <CustomDatePicker
+        visible={isDatePickerVisible}
+        onClose={() => setIsDatePickerVisible(false)}
+        mode="DATE"
+        value={selectedDate}
+        onConfirm={(d: Date) => setSelectedDate(d)}
+      />
     </KeyboardAvoidingView>
   );
 };
@@ -712,54 +712,6 @@ const styles = StyleSheet.create({
     color: '#64748B',
     marginTop: 2,
     fontWeight: '500',
-  },
-  segmentedContainer: {
-    flexDirection: 'row',
-    backgroundColor: '#161926',
-    borderRadius: 14,
-    padding: 4,
-    marginBottom: 16,
-    borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.06)',
-  },
-  segmentTab: {
-    flex: 1,
-    paddingVertical: 10,
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderRadius: 10,
-  },
-  segmentTabExpenseActive: {
-    backgroundColor: 'rgba(244, 63, 94, 0.22)',
-    borderWidth: 1,
-    borderColor: 'rgba(244, 63, 94, 0.55)',
-  },
-  segmentTabIncomeActive: {
-    backgroundColor: 'rgba(16, 185, 129, 0.22)',
-    borderWidth: 1,
-    borderColor: 'rgba(16, 185, 129, 0.55)',
-  },
-  segmentTabTransferActive: {
-    backgroundColor: 'rgba(139, 92, 246, 0.22)',
-    borderWidth: 1,
-    borderColor: 'rgba(139, 92, 246, 0.55)',
-  },
-  segmentText: {
-    fontSize: 13,
-    fontWeight: '600',
-    color: '#94A3B8',
-  },
-  segmentTextExpenseActive: {
-    color: '#F43F5E',
-    fontWeight: '700',
-  },
-  segmentTextIncomeActive: {
-    color: '#34D399',
-    fontWeight: '700',
-  },
-  segmentTextTransferActive: {
-    color: '#A855F7',
-    fontWeight: '700',
   },
   formCard: {
     backgroundColor: '#12141F',

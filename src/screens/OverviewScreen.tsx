@@ -30,6 +30,8 @@ import {
   Eye,
   EyeOff,
   Wallet as WalletIcon,
+  Calendar as CalendarIcon,
+  ChevronDown,
 } from 'lucide-react-native';
 import { Transaction, Wallet, TransactionType } from '../types';
 import { storageService } from '../services/storage';
@@ -37,6 +39,7 @@ import { syncService } from '../services/sync';
 import { formatVND, formatDateTime } from '../utils/format';
 import { CategoryIcon, getCategoryConfig } from '../components/CategoryIcon';
 import { colors } from '../theme/colors';
+import { CustomDatePicker, MonthYearValue } from '../components/CustomDatePicker';
 
 export interface QuickPreset {
   category: string;
@@ -74,6 +77,11 @@ export const OverviewScreen: React.FC<OverviewScreenProps> = ({
   const [hasConfiguredUrl, setHasConfiguredUrl] = useState<boolean>(false);
   const [isSyncing, setIsSyncing] = useState<boolean>(false);
   const [isRefreshing, setIsRefreshing] = useState<boolean>(false);
+
+  // Chọn Tháng / Năm thống kê (mặc định tháng hiện tại)
+  const [selectedYear, setSelectedYear] = useState<number>(new Date().getFullYear());
+  const [selectedMonth, setSelectedMonth] = useState<number>(new Date().getMonth());
+  const [isMonthPickerOpen, setIsMonthPickerOpen] = useState<boolean>(false);
 
   // Ẩn / hiện số dư
   const [isBalanceHidden, setIsBalanceHidden] = useState<boolean>(false);
@@ -116,10 +124,6 @@ export const OverviewScreen: React.FC<OverviewScreenProps> = ({
       const walletIncome = new Map<string, number>();
       const walletExpense = new Map<string, number>();
 
-      const now = new Date();
-      const currentYear = now.getFullYear();
-      const currentMonth = now.getMonth();
-
       let mExp = 0;
       let mInc = 0;
       let pending = 0;
@@ -135,8 +139,8 @@ export const OverviewScreen: React.FC<OverviewScreenProps> = ({
 
         const tDate = new Date(t.date);
         if (
-          tDate.getFullYear() === currentYear &&
-          tDate.getMonth() === currentMonth
+          tDate.getFullYear() === selectedYear &&
+          tDate.getMonth() === selectedMonth
         ) {
           if (t.type === 'EXPENSE') {
             mExp += t.amount;
@@ -176,7 +180,7 @@ export const OverviewScreen: React.FC<OverviewScreenProps> = ({
     } catch (error) {
       console.error('Lỗi tải dữ liệu tổng quan:', error);
     }
-  }, []);
+  }, [selectedYear, selectedMonth]);
 
   useEffect(() => {
     loadData();
@@ -233,15 +237,14 @@ export const OverviewScreen: React.FC<OverviewScreenProps> = ({
 
   const maxDayExpense = Math.max(...recentDays.map((d) => d.amount), 50000);
 
-  // Tỷ trọng danh mục chi tiêu tháng này
+  // Tỷ trọng danh mục chi tiêu tháng đang chọn
   const categoryTotals: { [cat: string]: number } = {};
   for (const t of transactions) {
     if (t.type === 'EXPENSE') {
       const tDate = new Date(t.date);
-      const now = new Date();
       if (
-        tDate.getFullYear() === now.getFullYear() &&
-        tDate.getMonth() === now.getMonth()
+        tDate.getFullYear() === selectedYear &&
+        tDate.getMonth() === selectedMonth
       ) {
         categoryTotals[t.category] = (categoryTotals[t.category] || 0) + t.amount;
       }
@@ -279,12 +282,25 @@ export const OverviewScreen: React.FC<OverviewScreenProps> = ({
     >
       {/* 1. Header Lời chào & Trạng thái Sync */}
       <Animated.View entering={FadeInDown.duration(400)} style={styles.topHeader}>
-        <View>
+        <View style={styles.titleCol}>
           <View style={styles.greetingRow}>
             <Sparkles size={14} color={colors.primary} style={{ marginRight: 6 }} />
             <Text style={styles.greetingText}>Matte Minimalist</Text>
           </View>
-          <Text style={styles.appTitle}>Tổng quan tài sản</Text>
+          <View style={styles.titleMonthRow}>
+            <Text style={styles.appTitle}>Tổng quan tài sản</Text>
+            <TouchableOpacity
+              style={styles.monthPillBadge}
+              onPress={() => setIsMonthPickerOpen(true)}
+              activeOpacity={0.7}
+            >
+              <CalendarIcon size={12} color="#A855F7" style={{ marginRight: 4 }} />
+              <Text style={styles.monthPillText}>
+                Tháng {selectedMonth + 1}/{selectedYear}
+              </Text>
+              <ChevronDown size={12} color="#94A3B8" style={{ marginLeft: 3 }} />
+            </TouchableOpacity>
+          </View>
         </View>
 
         <TouchableOpacity
@@ -669,6 +685,18 @@ export const OverviewScreen: React.FC<OverviewScreenProps> = ({
           </View>
         )}
       </Animated.View>
+
+      {/* Modal Chọn Tháng Thống Kê */}
+      <CustomDatePicker
+        visible={isMonthPickerOpen}
+        onClose={() => setIsMonthPickerOpen(false)}
+        mode="MONTH"
+        value={{ year: selectedYear, month: selectedMonth }}
+        onConfirm={(res: MonthYearValue) => {
+          setSelectedYear(res.year);
+          setSelectedMonth(res.month);
+        }}
+      />
     </ScrollView>
   );
 };
@@ -698,6 +726,32 @@ const styles = StyleSheet.create({
     color: colors.textSecondary,
     fontWeight: '500',
     letterSpacing: 0.3,
+  },
+  titleCol: {
+    flex: 1,
+    marginRight: 8,
+  },
+  titleMonthRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flexWrap: 'wrap',
+    gap: 8,
+    marginTop: 2,
+  },
+  monthPillBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#161926',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.08)',
+  },
+  monthPillText: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: '#CBD5E1',
   },
   appTitle: {
     fontSize: 22,

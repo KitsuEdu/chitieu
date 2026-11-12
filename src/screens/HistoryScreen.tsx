@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import {
   View,
   Text,
@@ -16,6 +16,9 @@ import {
   Trash,
   Banknote,
   ReceiptText,
+  Calendar as CalendarIcon,
+  ChevronDown,
+  X,
 } from 'lucide-react-native';
 import { Transaction } from '../types';
 import { storageService } from '../services/storage';
@@ -23,17 +26,44 @@ import { syncService } from '../services/sync';
 import { formatVND, formatDateTime } from '../utils/format';
 import { CategoryIcon } from '../components/CategoryIcon';
 import { colors } from '../theme/colors';
+import { SegmentedTabs, SegmentedTabItem } from '../components/SegmentedTabs';
+import { CustomDatePicker, MonthYearValue } from '../components/CustomDatePicker';
+import { usePopup } from '../context/PopupContext';
 
 interface HistoryScreenProps {
   onRefreshTriggered?: () => void;
 }
 
+type HistoryFilterMode = 'ALL' | 'EXPENSE' | 'INCOME';
+
+const HISTORY_FILTER_TABS: readonly SegmentedTabItem<HistoryFilterMode>[] = [
+  { key: 'ALL', label: 'Tất cả' },
+  { key: 'EXPENSE', label: 'Chi tiêu' },
+  { key: 'INCOME', label: 'Thu nhập' },
+];
+
 export const HistoryScreen: React.FC<HistoryScreenProps> = ({ onRefreshTriggered }) => {
+  const { showPopup, showConfirm } = usePopup();
   const [transactions, setTransactions] = useState<Transaction[]>([]);
-  const [filterType, setFilterType] = useState<'ALL' | 'EXPENSE' | 'INCOME'>('ALL');
+  const [filterType, setFilterType] = useState<HistoryFilterMode>('ALL');
   const [isRefreshing, setIsRefreshing] = useState<boolean>(false);
   const [isSyncing, setIsSyncing] = useState<boolean>(false);
   const [syncStatusText, setSyncStatusText] = useState<string | null>(null);
+
+  // Time filter states
+  const now = useMemo(() => new Date(), []);
+  const [filterMonth, setFilterMonth] = useState<MonthYearValue>({
+    year: now.getFullYear(),
+    month: now.getMonth(),
+  });
+  const [filterDate, setFilterDate] = useState<Date | null>(null);
+
+  const [isMonthPickerVisible, setIsMonthPickerVisible] = useState<boolean>(false);
+  const [isDatePickerVisible, setIsDatePickerVisible] = useState<boolean>(false);
+
+  const markedDates = useMemo(() => {
+    return Array.from(new Set(transactions.map((t) => t.date.split('T')[0])));
+  }, [transactions]);
 
   const loadData = useCallback(async () => {
     try {
@@ -85,31 +115,48 @@ export const HistoryScreen: React.FC<HistoryScreenProps> = ({ onRefreshTriggered
   };
 
   const handleDeleteTransaction = (item: Transaction) => {
-    Alert.alert(
-      'Xóa giao dịch',
-      `Bạn có chắc chắn muốn xóa "${item.category} - ${formatVND(item.amount)}"?`,
-      [
-        { text: 'Hủy', style: 'cancel' },
-        {
-          text: 'Xóa',
-          style: 'destructive',
-          onPress: async () => {
-            try {
-              await storageService.deleteTransaction(item.id);
-              await loadData();
-              onRefreshTriggered?.();
-            } catch {
-              Alert.alert('Lỗi', 'Không thể xóa giao dịch');
-            }
-          },
-        },
-      ]
-    );
+    showConfirm({
+      type: 'DANGER',
+      title: 'Xóa giao dịch',
+      message: `Bạn có chắc chắn muốn xóa "${item.category} - ${formatVND(item.amount)}"? Hành động này không thể hoàn tác.`,
+      confirmText: 'Xóa',
+      cancelText: 'Hủy',
+      onConfirm: async () => {
+        try {
+          await storageService.deleteTransaction(item.id);
+          await loadData();
+          onRefreshTriggered?.();
+        } catch {
+          showPopup({
+            type: 'ERROR',
+            title: 'Lỗi',
+            message: 'Không thể xóa giao dịch. Vui lòng thử lại.',
+          });
+        }
+      },
+    });
   };
 
   const filteredList = transactions.filter((t) => {
-    if (filterType === 'EXPENSE') return t.type === 'EXPENSE';
-    if (filterType === 'INCOME') return t.type === 'INCOME';
+    if (filterType === 'EXPENSE' && t.type !== 'EXPENSE') return false;
+    if (filterType === 'INCOME' && t.type !== 'INCOME') return false;
+
+    const tDate = new Date(t.date);
+    if (filterDate) {
+      return (
+        tDate.getFullYear() === filterDate.getFullYear() &&
+        tDate.getMonth() === filterDate.getMonth() &&
+        tDate.getDate() === filterDate.getDate()
+      );
+    }
+
+    if (filterMonth) {
+      return (
+        tDate.getFullYear() === filterMonth.year &&
+        tDate.getMonth() === filterMonth.month
+      );
+    }
+
     return true;
   });
 
@@ -210,31 +257,54 @@ export const HistoryScreen: React.FC<HistoryScreenProps> = ({ onRefreshTriggered
         </View>
       )}
 
-      {/* Segmented Filter */}
-      <View style={styles.filterBar}>
-        {(['ALL', 'EXPENSE', 'INCOME'] as const).map((mode) => {
-          const isSelected = filterType === mode;
-          const label =
-            mode === 'ALL' ? 'Tất cả' : mode === 'EXPENSE' ? 'Chi tiêu' : 'Thu nhập';
-          return (
+      {/* Time Filter Bar (Tháng/Năm & Ngày cụ thể) */}
+      <View style={styles.timeFilterBar}>
+        <TouchableOpacity
+          style={styles.timeFilterMonthBtn}
+          onPress={() => setIsMonthPickerVisible(true)}
+          activeOpacity={0.7}
+        >
+          <CalendarIcon size={14} color="#A855F7" style={{ marginRight: 6 }} />
+          <Text style={styles.timeFilterMonthText}>
+            Tháng {filterMonth.month + 1}/{filterMonth.year}
+          </Text>
+          <ChevronDown size={14} color="#94A3B8" style={{ marginLeft: 4 }} />
+        </TouchableOpacity>
+
+        <View style={styles.timeFilterRightRow}>
+          {filterDate ? (
+            <View style={styles.activeDateChip}>
+              <Text style={styles.activeDateText}>
+                Ngày {filterDate.getDate()}/{filterDate.getMonth() + 1}
+              </Text>
+              <TouchableOpacity
+                onPress={() => setFilterDate(null)}
+                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                activeOpacity={0.7}
+              >
+                <X size={12} color="#CBD5E1" style={{ marginLeft: 4 }} />
+              </TouchableOpacity>
+            </View>
+          ) : (
             <TouchableOpacity
-              key={mode}
-              style={[styles.filterChip, isSelected && styles.filterChipActive]}
-              onPress={() => setFilterType(mode)}
+              style={styles.datePickerIconBtn}
+              onPress={() => setIsDatePickerVisible(true)}
               activeOpacity={0.7}
             >
-              <Text
-                style={[
-                  styles.filterChipText,
-                  isSelected && styles.filterChipTextActive,
-                ]}
-              >
-                {label}
-              </Text>
+              <CalendarIcon size={13} color="#CBD5E1" style={{ marginRight: 5 }} />
+              <Text style={styles.datePickerBtnText}>Chọn ngày</Text>
             </TouchableOpacity>
-          );
-        })}
+          )}
+        </View>
       </View>
+
+      {/* Segmented Filter: Squeeze-Through Bottleneck */}
+      <SegmentedTabs
+        tabs={HISTORY_FILTER_TABS}
+        activeKey={filterType}
+        onChange={setFilterType}
+        containerStyle={{ marginVertical: 6 }}
+      />
 
       {/* Transaction List */}
       <FlatList
@@ -260,6 +330,30 @@ export const HistoryScreen: React.FC<HistoryScreenProps> = ({ onRefreshTriggered
           </View>
         }
       />
+      {/* Modal Lọc Tháng */}
+      <CustomDatePicker
+        visible={isMonthPickerVisible}
+        onClose={() => setIsMonthPickerVisible(false)}
+        mode="MONTH"
+        value={filterMonth}
+        onConfirm={(res: MonthYearValue) => {
+          setFilterMonth(res);
+          setFilterDate(null);
+        }}
+      />
+
+      {/* Modal Lọc Ngày cụ thể */}
+      <CustomDatePicker
+        visible={isDatePickerVisible}
+        onClose={() => setIsDatePickerVisible(false)}
+        mode="DATE"
+        value={filterDate || new Date(filterMonth.year, filterMonth.month, 1)}
+        markedDates={markedDates}
+        onConfirm={(d: Date) => {
+          setFilterDate(d);
+          setFilterMonth({ year: d.getFullYear(), month: d.getMonth() });
+        }}
+      />
     </View>
   );
 };
@@ -277,6 +371,62 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingVertical: 10,
     paddingHorizontal: 2,
+  },
+  timeFilterBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: '#12141F',
+    borderRadius: 14,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.06)',
+    marginBottom: 6,
+  },
+  timeFilterMonthBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 3,
+  },
+  timeFilterMonthText: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#F8FAFC',
+  },
+  timeFilterRightRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  datePickerIconBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 8,
+    backgroundColor: '#1A1D2B',
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.06)',
+  },
+  datePickerBtnText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#CBD5E1',
+  },
+  activeDateChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 9,
+    paddingVertical: 4,
+    borderRadius: 8,
+    backgroundColor: 'rgba(139, 92, 246, 0.2)',
+    borderWidth: 1,
+    borderColor: 'rgba(168, 85, 247, 0.45)',
+  },
+  activeDateText: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#C084FC',
   },
   pageTitle: {
     fontSize: 22,
@@ -319,34 +469,6 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: '600',
     textAlign: 'center',
-  },
-  filterBar: {
-    flexDirection: 'row',
-    backgroundColor: colors.surface,
-    borderRadius: 12,
-    padding: 3,
-    marginVertical: 8,
-    gap: 4,
-    borderWidth: 1,
-    borderColor: colors.border,
-  },
-  filterChip: {
-    flex: 1,
-    paddingVertical: 7,
-    borderRadius: 9,
-    alignItems: 'center',
-  },
-  filterChipActive: {
-    backgroundColor: colors.primarySoft,
-  },
-  filterChipText: {
-    fontSize: 13,
-    color: colors.textSecondary,
-    fontWeight: '500',
-  },
-  filterChipTextActive: {
-    color: colors.primaryBright,
-    fontWeight: '700',
   },
   listContent: {
     paddingBottom: 96,
