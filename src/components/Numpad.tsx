@@ -10,6 +10,7 @@ import Animated, {
   useAnimatedStyle,
   withTiming,
 } from 'react-native-reanimated';
+import * as Haptics from 'expo-haptics';
 import { Delete } from 'lucide-react-native';
 import { colors } from '../theme/colors';
 
@@ -47,6 +48,11 @@ const NumpadKey: React.FC<KeyProps> = ({
   }));
 
   const handlePressIn = () => {
+    try {
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    } catch {
+      // Ignore on unsupported devices
+    }
     scale.value = withTiming(0.96, { duration: 60 });
     opacity.value = withTiming(0.85, { duration: 60 });
   };
