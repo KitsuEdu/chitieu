@@ -12,12 +12,14 @@ import {
   KeyboardAvoidingView,
   Platform,
 } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Animated, {
   useSharedValue,
   useAnimatedStyle,
   withRepeat,
   withSequence,
   withTiming,
+  Easing,
 } from 'react-native-reanimated';
 import * as Haptics from 'expo-haptics';
 import {
@@ -70,6 +72,8 @@ export const QuickEntryScreen: React.FC<QuickEntryScreenProps> = ({
   initialPreset,
   onTransactionSaved,
 }) => {
+  const insets = useSafeAreaInsets();
+
   const [expression, setExpression] = useState<string>('0');
   const [type, setType] = useState<TransactionType>('EXPENSE');
   const [category, setCategory] = useState<string>(CATEGORIES[0]);
@@ -87,14 +91,33 @@ export const QuickEntryScreen: React.FC<QuickEntryScreenProps> = ({
   const scrollViewRef = useRef<any>(null);
   const cursorOpacity = useSharedValue(0);
 
-  // Tự động cuộn nhẹ để giữ ô số tiền và bàn phím ở vị trí trung tâm, không bị khuất
+  // Animation trượt bàn phím số từ đáy lên đè lên trên Navbar
+  const numpadTranslateY = useSharedValue(600);
+  const backdropOpacity = useSharedValue(0);
+
   useEffect(() => {
-    if (isAmountFocused) {
-      setTimeout(() => {
-        scrollViewRef.current?.scrollTo({ y: 80, animated: true });
-      }, 60);
+    if (isAmountFocused && !isNoteFocused) {
+      numpadTranslateY.value = withTiming(0, {
+        duration: 260,
+        easing: Easing.bezier(0.16, 1, 0.3, 1),
+      });
+      backdropOpacity.value = withTiming(1, { duration: 200 });
+    } else {
+      numpadTranslateY.value = withTiming(600, {
+        duration: 220,
+        easing: Easing.in(Easing.cubic),
+      });
+      backdropOpacity.value = withTiming(0, { duration: 180 });
     }
-  }, [isAmountFocused]);
+  }, [isAmountFocused, isNoteFocused]);
+
+  const numpadAnimatedStyle = useAnimatedStyle(() => ({
+    transform: [{ translateY: numpadTranslateY.value }],
+  }));
+
+  const backdropAnimatedStyle = useAnimatedStyle(() => ({
+    opacity: backdropOpacity.value,
+  }));
 
   // Hiệu ứng con trỏ nhấp nháy khi focus vào ô số tiền
   useEffect(() => {
@@ -462,37 +485,6 @@ export const QuickEntryScreen: React.FC<QuickEntryScreenProps> = ({
             </View>
           </Pressable>
 
-          {/* Bàn phím số Numpad: Nằm ngay dưới ô Số tiền ở đúng vị trí */}
-          {isAmountFocused && !isNoteFocused && (
-            <View style={styles.inlineNumpadWrapper}>
-              <View style={styles.numpadHeaderBar}>
-                <Text style={styles.numpadHeaderTitle}>Bàn phím máy tính</Text>
-                <TouchableOpacity
-                  style={styles.closeNumpadBtn}
-                  onPress={() => setIsAmountFocused(false)}
-                >
-                  <Text style={styles.closeNumpadText}>Thu gọn</Text>
-                  <ChevronDown size={16} color="#8B5CF6" />
-                </TouchableOpacity>
-              </View>
-
-              <CalculatorNumpad
-                expression={expression}
-                evaluatedAmount={evaluatedAmount}
-                hasPendingOperator={pendingOperator}
-                onPressDigit={handleDigit}
-                onPressOperator={handleOperator}
-                onPressBackspace={handleBackspace}
-                onPressClear={handleClear}
-                onPressEqual={handleEqual}
-                onPressChip={handleChip}
-                onSave={handleSave}
-                containerStyle={styles.inlineNumpadInner}
-                hideSaveButton
-              />
-            </View>
-          )}
-
           <View style={styles.divider} />
 
           {/* Row 3: Chọn Nhóm (Category) */}
@@ -597,6 +589,74 @@ export const QuickEntryScreen: React.FC<QuickEntryScreenProps> = ({
           <Text style={styles.saveActionBtnText}>Lưu giao dịch</Text>
         </TouchableOpacity>
       </ScrollView>
+
+      {/* 1. Backdrop làm mờ khi mở bàn phím số */}
+      <Animated.View
+        style={[styles.backdrop, backdropAnimatedStyle]}
+        pointerEvents={isAmountFocused && !isNoteFocused ? 'auto' : 'none'}
+      >
+        <Pressable
+          style={StyleSheet.absoluteFill}
+          onPress={() => setIsAmountFocused(false)}
+        />
+      </Animated.View>
+
+      {/* 2. Bàn phím số gắn đáy, đè hoàn toàn lên trên LiquidNavBar */}
+      <Animated.View
+        style={[
+          styles.dockedNumpadWrapper,
+          numpadAnimatedStyle,
+          { paddingBottom: Math.max(16, insets.bottom + 6) },
+        ]}
+        pointerEvents={isAmountFocused && !isNoteFocused ? 'auto' : 'none'}
+      >
+        {/* Header bàn phím hiển thị số tiền to rõ & nút Xong */}
+        <View style={styles.dockedHeader}>
+          <View style={styles.dockedAmountRow}>
+            <View style={styles.dockedVndBadge}>
+              <Text style={styles.dockedVndBadgeText}>VND</Text>
+            </View>
+            <Text
+              style={[
+                styles.dockedAmountText,
+                type === 'EXPENSE' && { color: '#F43F5E' },
+                type === 'INCOME' && { color: '#34D399' },
+                type === 'TRANSFER' && { color: '#8B5CF6' },
+              ]}
+              numberOfLines={1}
+              adjustsFontSizeToFit
+            >
+              {formatExpressionWithCommas(expression)}
+            </Text>
+            <Animated.View style={[styles.blinkingCursor, cursorAnimatedStyle]} />
+          </View>
+
+          <TouchableOpacity
+            style={styles.dockedDoneBtn}
+            onPress={() => setIsAmountFocused(false)}
+            activeOpacity={0.7}
+          >
+            <Text style={styles.dockedDoneText}>Xong</Text>
+            <ChevronDown size={18} color="#8B5CF6" />
+          </TouchableOpacity>
+        </View>
+
+        {/* Numpad máy tính */}
+        <CalculatorNumpad
+          expression={expression}
+          evaluatedAmount={evaluatedAmount}
+          hasPendingOperator={pendingOperator}
+          onPressDigit={handleDigit}
+          onPressOperator={handleOperator}
+          onPressBackspace={handleBackspace}
+          onPressClear={handleClear}
+          onPressEqual={handleEqual}
+          onPressChip={handleChip}
+          onSave={handleSave}
+          containerStyle={styles.dockedNumpadInner}
+          hideSaveButton
+        />
+      </Animated.View>
 
       {/* Modal Chọn Ví */}
       <WalletSelectModal
@@ -843,43 +903,89 @@ const styles = StyleSheet.create({
     paddingHorizontal: 8,
     paddingVertical: 6,
   },
-  inlineNumpadWrapper: {
-    paddingTop: 6,
-    paddingBottom: 8,
+  backdrop: {
+    ...StyleSheet.absoluteFill,
+    backgroundColor: 'rgba(0, 0, 0, 0.45)',
+    zIndex: 400,
   },
-  inlineNumpadInner: {
-    backgroundColor: 'transparent',
-    borderTopWidth: 0,
-    paddingHorizontal: 0,
-    paddingBottom: 4,
+  dockedNumpadWrapper: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: '#12141F',
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    borderTopWidth: 1,
+    borderTopColor: 'rgba(255, 255, 255, 0.1)',
+    zIndex: 500, // Đè hoàn toàn lên trên zIndex: 100 của LiquidNavBar
+    paddingHorizontal: 16,
+    paddingTop: 12,
+    ...Platform.select({
+      ios: {
+        shadowColor: '#000000',
+        shadowOffset: { width: 0, height: -4 },
+        shadowOpacity: 0.45,
+        shadowRadius: 12,
+      },
+      android: {
+        elevation: 20,
+      },
+    }),
   },
-  numpadHeaderBar: {
+  dockedHeader: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingVertical: 6,
-    marginBottom: 4,
+    paddingBottom: 10,
+    borderBottomWidth: 1,
+    borderBottomColor: 'rgba(255, 255, 255, 0.06)',
+    marginBottom: 8,
   },
-  numpadHeaderTitle: {
-    fontSize: 12,
-    fontWeight: '600',
-    color: '#64748B',
-    textTransform: 'uppercase',
-    letterSpacing: 0.5,
-  },
-  closeNumpadBtn: {
+  dockedAmountRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 2,
-    paddingVertical: 4,
-    paddingHorizontal: 8,
-    borderRadius: 8,
-    backgroundColor: 'rgba(139, 92, 246, 0.12)',
+    flex: 1,
   },
-  closeNumpadText: {
-    fontSize: 12,
-    fontWeight: '600',
+  dockedVndBadge: {
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 8,
+    backgroundColor: 'rgba(139, 92, 246, 0.18)',
+    borderWidth: 1,
+    borderColor: '#8B5CF6',
+    marginRight: 10,
+  },
+  dockedVndBadgeText: {
+    fontSize: 11,
+    fontWeight: '800',
+    color: '#A855F7',
+  },
+  dockedAmountText: {
+    fontSize: 24,
+    fontWeight: '800',
+    letterSpacing: -0.5,
+  },
+  dockedDoneBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingVertical: 6,
+    paddingHorizontal: 12,
+    borderRadius: 12,
+    backgroundColor: 'rgba(139, 92, 246, 0.15)',
+  },
+  dockedDoneText: {
+    fontSize: 13,
+    fontWeight: '700',
     color: '#8B5CF6',
+  },
+  dockedNumpadInner: {
+    backgroundColor: 'transparent',
+    borderTopWidth: 0,
+    paddingHorizontal: 0,
+    paddingBottom: 0,
+    paddingTop: 4,
   },
   saveActionBtn: {
     height: 50,
