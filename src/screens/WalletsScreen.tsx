@@ -15,7 +15,6 @@ import { SvgXml } from 'react-native-svg';
 import {
   Wallet as WalletIcon,
   Landmark,
-  PiggyBank,
   CreditCard,
   Zap,
   Plus,
@@ -37,6 +36,7 @@ import { formatVND } from '../utils/format';
 import { colors } from '../theme/colors';
 import { WalletLogo } from '../components/WalletLogo';
 import { LogoPickerModal } from '../components/LogoPickerModal';
+import { CurrencyInput } from '../components/CurrencyInput';
 import {
   BANK_LOGOS,
   EWALLET_LOGOS,
@@ -47,15 +47,6 @@ import {
 interface WalletsScreenProps {
   onWalletsUpdated?: () => void;
 }
-
-const WALLET_DOT_COLORS = [
-  '#8B5CF6', // Violet
-  '#34D399', // Mint Green
-  '#38BDF8', // Sky
-  '#F43F5E', // Rose
-  '#F59E0B', // Amber
-  '#EC4899', // Pink
-];
 
 export const WalletsScreen: React.FC<WalletsScreenProps> = ({ onWalletsUpdated }) => {
   const [wallets, setWallets] = useState<Wallet[]>([]);
@@ -73,15 +64,14 @@ export const WalletsScreen: React.FC<WalletsScreenProps> = ({ onWalletsUpdated }
   const [walletType, setWalletType] = useState<WalletType>('CASH');
   const [selectedLogoId, setSelectedLogoId] = useState<string | undefined>(undefined);
   const [ewalletSubtype, setEwalletSubtype] = useState<'BALANCE' | 'PAYLATER'>('BALANCE');
-  const [selectedColor, setSelectedColor] = useState<string>(WALLET_DOT_COLORS[0]);
   const [selectedIcon, setSelectedIcon] = useState<string>('Wallet');
 
   // Fields for CASH & BANK_EWALLET & BALANCE e-wallet
-  const [balanceStr, setBalanceStr] = useState<string>('0');
+  const [balance, setBalance] = useState<number>(0);
 
   // Fields for CREDIT_CARD & PAYLATER
-  const [creditLimitStr, setCreditLimitStr] = useState<string>('');
-  const [currentBalanceStr, setCurrentBalanceStr] = useState<string>('0');
+  const [creditLimit, setCreditLimit] = useState<number>(0);
+  const [currentBalance, setCurrentBalance] = useState<number>(0);
   const [statementDateStr, setStatementDateStr] = useState<string>('');
   const [dueDateStr, setDueDateStr] = useState<string>('');
   const [feeWarningNote, setFeeWarningNote] = useState<string>('');
@@ -184,15 +174,6 @@ export const WalletsScreen: React.FC<WalletsScreenProps> = ({ onWalletsUpdated }
     setWalletType(presetType);
     setSelectedLogoId(undefined);
     setEwalletSubtype('BALANCE');
-    setSelectedColor(
-      presetType === 'CREDIT_CARD'
-        ? WALLET_DOT_COLORS[3]
-        : presetType === 'PAYLATER'
-        ? WALLET_DOT_COLORS[4]
-        : presetType === 'BANK_EWALLET'
-        ? WALLET_DOT_COLORS[0]
-        : WALLET_DOT_COLORS[1]
-    );
     setSelectedIcon(
       presetType === 'CREDIT_CARD'
         ? 'CreditCard'
@@ -202,9 +183,9 @@ export const WalletsScreen: React.FC<WalletsScreenProps> = ({ onWalletsUpdated }
         ? 'Landmark'
         : 'Wallet'
     );
-    setBalanceStr('0');
-    setCreditLimitStr('');
-    setCurrentBalanceStr('0');
+    setBalance(0);
+    setCreditLimit(0);
+    setCurrentBalance(0);
     setStatementDateStr('');
     setDueDateStr('');
     setFeeWarningNote('');
@@ -217,14 +198,13 @@ export const WalletsScreen: React.FC<WalletsScreenProps> = ({ onWalletsUpdated }
     setWalletType(w.type);
     const matched = getLogoById(w.logoId || w.icon);
     setSelectedLogoId(matched ? matched.id : undefined);
-    setSelectedColor(w.colorGradient ? w.colorGradient[0] : WALLET_DOT_COLORS[0]);
     setSelectedIcon(w.icon || 'Wallet');
     setEwalletSubtype(
       (w.creditLimit || 0) > 0 || (w.currentBalance || 0) > 0 ? 'PAYLATER' : 'BALANCE'
     );
-    setBalanceStr((w.balance || 0).toString());
-    setCreditLimitStr(w.creditLimit ? w.creditLimit.toString() : '');
-    setCurrentBalanceStr((w.currentBalance || 0).toString());
+    setBalance(w.balance || 0);
+    setCreditLimit(w.creditLimit || 0);
+    setCurrentBalance(w.currentBalance || 0);
     setStatementDateStr(w.statementDate ? w.statementDate.toString() : '');
     setDueDateStr(w.dueDate ? w.dueDate.toString() : '');
     setFeeWarningNote(w.feeWarningNote || '');
@@ -269,16 +249,27 @@ export const WalletsScreen: React.FC<WalletsScreenProps> = ({ onWalletsUpdated }
       walletType === 'CREDIT_CARD' ||
       (walletType === 'PAYLATER' && ewalletSubtype === 'PAYLATER');
 
+    const defaultAccent =
+      walletType === 'CREDIT_CARD'
+        ? '#F43F5E'
+        : walletType === 'PAYLATER'
+        ? '#F59E0B'
+        : walletType === 'BANK_EWALLET'
+        ? '#8B5CF6'
+        : '#34D399';
+
+    const chosenColor = editingWallet?.colorGradient?.[0] || defaultAccent;
+
     try {
       const walletPayload = {
         name: trimmedName,
         type: walletType,
         icon: selectedLogoId || selectedIcon,
         logoId: selectedLogoId,
-        colorGradient: [selectedColor, selectedColor] as [string, string],
-        balance: !isCredit ? parseInt(balanceStr, 10) || 0 : undefined,
-        creditLimit: isCredit ? parseInt(creditLimitStr, 10) || 0 : undefined,
-        currentBalance: isCredit ? parseInt(currentBalanceStr, 10) || 0 : undefined,
+        colorGradient: [chosenColor, chosenColor] as [string, string],
+        balance: !isCredit ? balance : undefined,
+        creditLimit: isCredit ? creditLimit : undefined,
+        currentBalance: isCredit ? currentBalance : undefined,
         statementDate: isCredit ? parseInt(statementDateStr, 10) || undefined : undefined,
         dueDate: isCredit ? parseInt(dueDateStr, 10) || undefined : undefined,
         feeWarningNote: isCredit ? feeWarningNote.trim() || undefined : undefined,
@@ -426,7 +417,7 @@ export const WalletsScreen: React.FC<WalletsScreenProps> = ({ onWalletsUpdated }
               mode === 'ALL'
                 ? 'Tất cả nguồn'
                 : mode === 'ASSETS'
-                ? 'Khả dụng (Cash/Bank)'
+                ? 'KhẢ DỤNG'
                 : 'Tín dụng & Ví điện tử';
             return (
               <TouchableOpacity
@@ -441,7 +432,7 @@ export const WalletsScreen: React.FC<WalletsScreenProps> = ({ onWalletsUpdated }
                     isSelected && styles.filterChipTextActive,
                   ]}
                 >
-                  {label}
+                  {mode === 'ASSETS' ? 'Khả dụng (Cash/Bank)' : label}
                 </Text>
               </TouchableOpacity>
             );
@@ -836,28 +827,22 @@ export const WalletsScreen: React.FC<WalletsScreenProps> = ({ onWalletsUpdated }
                 </View>
               )}
 
-              {/* Form tùy biến theo Loại ví */}
+              {/* Form số tiền sử dụng CurrencyInput (Tự động định dạng dấu chấm) */}
               {walletType === 'CREDIT_CARD' ||
               (walletType === 'PAYLATER' && ewalletSubtype === 'PAYLATER') ? (
                 <View style={styles.conditionalSection}>
                   <Text style={styles.fieldLabel}>Hạn mức tối đa được cấp (VNĐ) *</Text>
-                  <TextInput
-                    style={styles.textInput}
+                  <CurrencyInput
+                    value={creditLimit}
+                    onChangeValue={setCreditLimit}
                     placeholder="VD: 10.000.000"
-                    placeholderTextColor={colors.textMuted}
-                    keyboardType="numeric"
-                    value={creditLimitStr}
-                    onChangeText={setCreditLimitStr}
                   />
 
                   <Text style={styles.fieldLabel}>Dư nợ ban đầu (Số tiền đang nợ) *</Text>
-                  <TextInput
-                    style={styles.textInput}
+                  <CurrencyInput
+                    value={currentBalance}
+                    onChangeValue={setCurrentBalance}
                     placeholder="0"
-                    placeholderTextColor={colors.textMuted}
-                    keyboardType="numeric"
-                    value={currentBalanceStr}
-                    onChangeText={setCurrentBalanceStr}
                   />
 
                   <View style={styles.dualFieldRow}>
@@ -900,36 +885,13 @@ export const WalletsScreen: React.FC<WalletsScreenProps> = ({ onWalletsUpdated }
               ) : (
                 <View style={styles.conditionalSection}>
                   <Text style={styles.fieldLabel}>Số dư khả dụng ban đầu (VNĐ) *</Text>
-                  <TextInput
-                    style={styles.textInput}
-                    placeholder="VD: 5.000.000"
-                    placeholderTextColor={colors.textMuted}
-                    keyboardType="numeric"
-                    value={balanceStr}
-                    onChangeText={setBalanceStr}
+                  <CurrencyInput
+                    value={balance}
+                    onChangeValue={setBalance}
+                    placeholder="0"
                   />
                 </View>
               )}
-
-              {/* Chấm màu nhận diện */}
-              <Text style={styles.fieldLabel}>Chấm màu nhận diện</Text>
-              <View style={styles.colorDotRow}>
-                {WALLET_DOT_COLORS.map((color) => {
-                  const isSelected = selectedColor === color;
-                  return (
-                    <TouchableOpacity
-                      key={color}
-                      style={[
-                        styles.colorDot,
-                        { backgroundColor: color },
-                        isSelected && styles.colorDotSelected,
-                      ]}
-                      onPress={() => setSelectedColor(color)}
-                      activeOpacity={0.7}
-                    />
-                  );
-                })}
-              </View>
 
               {/* Nút hành động */}
               <View style={styles.modalActionButtons}>
@@ -987,7 +949,7 @@ const styles = StyleSheet.create({
     color: colors.textPrimary,
   },
   pageSubTitle: {
-    fontSize: 12,
+    fontSize: 13, // Tăng 1px (cũ: 12)
     color: colors.textSecondary,
     marginTop: 2,
   },
@@ -1002,7 +964,7 @@ const styles = StyleSheet.create({
   },
   addWalletBtnText: {
     color: '#FFFFFF',
-    fontSize: 13,
+    fontSize: 14, // Tăng 1px (cũ: 13)
     fontWeight: '700',
   },
   summaryBox: {
@@ -1038,19 +1000,19 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   summaryLabel: {
-    fontSize: 10,
+    fontSize: 11, // Tăng 1px (cũ: 10)
     fontWeight: '700',
     color: colors.textMuted,
     letterSpacing: 0.6,
   },
   summaryValCash: {
-    fontSize: 14,
+    fontSize: 15, // Tăng 1px (cũ: 14)
     fontWeight: '800',
     color: colors.income,
     marginTop: 2,
   },
   summaryValDebt: {
-    fontSize: 14,
+    fontSize: 15, // Tăng 1px (cũ: 14)
     fontWeight: '800',
     color: colors.expense,
     marginTop: 2,
@@ -1081,7 +1043,7 @@ const styles = StyleSheet.create({
     backgroundColor: colors.primarySoft,
   },
   filterChipText: {
-    fontSize: 11,
+    fontSize: 12, // Tăng 1px (cũ: 11)
     color: colors.textSecondary,
     fontWeight: '500',
   },
@@ -1123,12 +1085,12 @@ const styles = StyleSheet.create({
     borderRadius: 4,
   },
   cardWalletName: {
-    fontSize: 15,
+    fontSize: 16, // Tăng 1px (cũ: 15)
     fontWeight: '800',
     color: colors.textPrimary,
   },
   typeBadgeText: {
-    fontSize: 11,
+    fontSize: 12, // Tăng 1px (cũ: 11)
     fontWeight: '600',
     marginTop: 2,
   },
@@ -1144,7 +1106,7 @@ const styles = StyleSheet.create({
     borderColor: colors.border,
   },
   statSubLabel: {
-    fontSize: 10,
+    fontSize: 11, // Tăng 1px (cũ: 10)
     fontWeight: '700',
     color: colors.textMuted,
     letterSpacing: 0.8,
@@ -1153,7 +1115,7 @@ const styles = StyleSheet.create({
     marginTop: 12,
   },
   cashAmountValue: {
-    fontSize: 24,
+    fontSize: 25, // Tăng 1px (cũ: 24)
     fontWeight: '900',
     color: colors.textPrimary,
     marginTop: 2,
@@ -1176,17 +1138,17 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   cashFooterLabel: {
-    fontSize: 11,
+    fontSize: 12, // Tăng 1px (cũ: 11)
     color: colors.textMuted,
     marginRight: 4,
   },
   cashFooterVal: {
-    fontSize: 11,
+    fontSize: 12, // Tăng 1px (cũ: 11)
     color: colors.expense,
     fontWeight: '700',
   },
   cashGocLabel: {
-    fontSize: 11,
+    fontSize: 12, // Tăng 1px (cũ: 11)
     color: colors.textSecondary,
     fontWeight: '600',
   },
@@ -1199,13 +1161,13 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   debtAmountValue: {
-    fontSize: 20,
+    fontSize: 21, // Tăng 1px (cũ: 20)
     fontWeight: '900',
     color: colors.expense,
     marginTop: 2,
   },
   availableLimitValue: {
-    fontSize: 17,
+    fontSize: 18, // Tăng 1px (cũ: 17)
     fontWeight: '800',
     color: colors.textPrimary,
     marginTop: 2,
@@ -1229,12 +1191,12 @@ const styles = StyleSheet.create({
     marginTop: 4,
   },
   limitLabelLeft: {
-    fontSize: 10,
+    fontSize: 11, // Tăng 1px (cũ: 10)
     color: colors.textSecondary,
     fontWeight: '600',
   },
   limitLabelRight: {
-    fontSize: 10,
+    fontSize: 11, // Tăng 1px (cũ: 10)
     color: colors.textMuted,
   },
   cycleInfoRow: {
@@ -1254,7 +1216,7 @@ const styles = StyleSheet.create({
     borderRadius: 8,
   },
   cycleBadgeText: {
-    fontSize: 11,
+    fontSize: 12, // Tăng 1px (cũ: 11)
     color: colors.textSecondary,
     fontWeight: '500',
   },
@@ -1270,7 +1232,7 @@ const styles = StyleSheet.create({
     marginTop: 8,
   },
   feeWarningText: {
-    fontSize: 11,
+    fontSize: 12, // Tăng 1px (cũ: 11)
     color: colors.warning,
     fontWeight: '500',
     flex: 1,
@@ -1298,12 +1260,12 @@ const styles = StyleSheet.create({
     marginBottom: 14,
   },
   modalBoxTitle: {
-    fontSize: 18,
+    fontSize: 19, // Tăng 1px (cũ: 18)
     fontWeight: '800',
     color: colors.textPrimary,
   },
   fieldLabel: {
-    fontSize: 12,
+    fontSize: 13, // Tăng 1px (cũ: 12)
     fontWeight: '600',
     color: colors.textSecondary,
     marginTop: 10,
@@ -1329,7 +1291,7 @@ const styles = StyleSheet.create({
     backgroundColor: colors.primarySoft,
   },
   typeGridLabel: {
-    fontSize: 11,
+    fontSize: 12, // Tăng 1px (cũ: 11)
     color: colors.textMuted,
     fontWeight: '600',
     textAlign: 'center',
@@ -1363,7 +1325,7 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(139, 92, 246, 0.1)',
   },
   openPickerBtnText: {
-    fontSize: 11,
+    fontSize: 12, // Tăng 1px (cũ: 11)
     color: colors.primaryBright,
     fontWeight: '600',
     marginRight: 2,
@@ -1379,17 +1341,17 @@ const styles = StyleSheet.create({
     marginBottom: 10,
   },
   selectedLogoTitle: {
-    fontSize: 14,
+    fontSize: 15, // Tăng 1px (cũ: 14)
     fontWeight: '700',
     color: colors.textPrimary,
   },
   selectedLogoDesc: {
-    fontSize: 11,
+    fontSize: 12, // Tăng 1px (cũ: 11)
     color: colors.textMuted,
     marginTop: 2,
   },
   quickLogoLabel: {
-    fontSize: 11,
+    fontSize: 12, // Tăng 1px (cũ: 11)
     color: colors.textMuted,
     fontWeight: '500',
     marginBottom: 6,
@@ -1414,7 +1376,7 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(139, 92, 246, 0.12)',
   },
   quickLogoChipText: {
-    fontSize: 12,
+    fontSize: 13, // Tăng 1px (cũ: 12)
     color: colors.textSecondary,
     fontWeight: '600',
     marginLeft: 6,
@@ -1454,7 +1416,7 @@ const styles = StyleSheet.create({
     backgroundColor: colors.primarySoft,
   },
   ewalletSubtypeText: {
-    fontSize: 11,
+    fontSize: 12, // Tăng 1px (cũ: 11)
     color: colors.textMuted,
     fontWeight: '600',
   },
@@ -1470,7 +1432,7 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     paddingHorizontal: 12,
     paddingVertical: 9,
-    fontSize: 13,
+    fontSize: 14, // Tăng 1px (cũ: 13)
     color: colors.textPrimary,
   },
   conditionalSection: {
@@ -1479,20 +1441,6 @@ const styles = StyleSheet.create({
   dualFieldRow: {
     flexDirection: 'row',
     gap: 10,
-  },
-  colorDotRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    marginTop: 6,
-  },
-  colorDot: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
-  },
-  colorDotSelected: {
-    borderWidth: 3,
-    borderColor: '#FFFFFF',
   },
   modalActionButtons: {
     flexDirection: 'row',
@@ -1508,6 +1456,7 @@ const styles = StyleSheet.create({
     backgroundColor: colors.track,
   },
   cancelBtnText: {
+    fontSize: 14, // Tăng 1px (cũ: 13)
     color: colors.textSecondary,
     fontWeight: '600',
   },
@@ -1520,6 +1469,7 @@ const styles = StyleSheet.create({
     backgroundColor: colors.primary,
   },
   confirmBtnText: {
+    fontSize: 14, // Tăng 1px (cũ: 13)
     color: '#FFFFFF',
     fontWeight: '700',
   },

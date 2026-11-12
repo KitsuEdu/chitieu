@@ -299,12 +299,12 @@ const styles = StyleSheet.create({
     paddingBottom: 12,
   },
   title: {
-    fontSize: 17,
+    fontSize: 18,
     fontWeight: '700',
     color: colors.textPrimary,
   },
   subTitle: {
-    fontSize: 12,
+    fontSize: 13,
     color: colors.textMuted,
     marginTop: 2,
   },
@@ -322,7 +322,7 @@ const styles = StyleSheet.create({
     borderRadius: 10,
     marginHorizontal: HORIZONTAL_PADDING,
     paddingHorizontal: 10,
-    height: 40,
+    height: 42,
     marginBottom: 10,
   },
   searchIcon: {
@@ -330,7 +330,7 @@ const styles = StyleSheet.create({
   },
   searchInput: {
     flex: 1,
-    fontSize: 13,
+    fontSize: 14,
     color: colors.textPrimary,
     paddingVertical: 0,
   },
@@ -356,7 +356,7 @@ const styles = StyleSheet.create({
     borderColor: 'rgba(139, 92, 246, 0.35)',
   },
   tabText: {
-    fontSize: 12,
+    fontSize: 13,
     color: colors.textMuted,
     fontWeight: '500',
   },
@@ -378,7 +378,7 @@ const styles = StyleSheet.create({
     borderStyle: 'dashed',
   },
   noLogoText: {
-    fontSize: 12,
+    fontSize: 13,
     color: colors.textSecondary,
     fontWeight: '500',
   },
@@ -417,7 +417,7 @@ const styles = StyleSheet.create({
     marginBottom: 4,
   },
   logoName: {
-    fontSize: 10,
+    fontSize: 11, // Tăng 1px (cũ: 10)
     color: colors.textSecondary,
     textAlign: 'center',
     fontWeight: '500',
@@ -443,7 +443,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   emptyText: {
-    fontSize: 13,
+    fontSize: 14, // Tăng 1px (cũ: 13)
     color: colors.textMuted,
     textAlign: 'center',
   },
