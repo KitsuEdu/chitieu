@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import {
   View,
   Text,
@@ -11,6 +11,7 @@ import {
   RefreshControl,
 } from 'react-native';
 import Animated, { FadeInDown } from 'react-native-reanimated';
+import { SvgXml } from 'react-native-svg';
 import {
   Wallet as WalletIcon,
   Landmark,
@@ -26,11 +27,22 @@ import {
   AlertTriangle,
   Info,
   CircleDollarSign,
+  ChevronRight,
+  Smartphone,
+  Check,
 } from 'lucide-react-native';
 import { Transaction, Wallet, WalletType } from '../types';
 import { storageService } from '../services/storage';
 import { formatVND } from '../utils/format';
 import { colors } from '../theme/colors';
+import { WalletLogo } from '../components/WalletLogo';
+import { LogoPickerModal } from '../components/LogoPickerModal';
+import {
+  BANK_LOGOS,
+  EWALLET_LOGOS,
+  getLogoById,
+  WalletLogoItem,
+} from '../constants/logos';
 
 interface WalletsScreenProps {
   onWalletsUpdated?: () => void;
@@ -54,14 +66,17 @@ export const WalletsScreen: React.FC<WalletsScreenProps> = ({ onWalletsUpdated }
   // Modal State
   const [modalVisible, setModalVisible] = useState<boolean>(false);
   const [editingWallet, setEditingWallet] = useState<Wallet | null>(null);
+  const [logoPickerVisible, setLogoPickerVisible] = useState<boolean>(false);
 
   // Form Fields
   const [walletName, setWalletName] = useState<string>('');
   const [walletType, setWalletType] = useState<WalletType>('CASH');
+  const [selectedLogoId, setSelectedLogoId] = useState<string | undefined>(undefined);
+  const [ewalletSubtype, setEwalletSubtype] = useState<'BALANCE' | 'PAYLATER'>('BALANCE');
   const [selectedColor, setSelectedColor] = useState<string>(WALLET_DOT_COLORS[0]);
   const [selectedIcon, setSelectedIcon] = useState<string>('Wallet');
 
-  // Fields for CASH & BANK_EWALLET
+  // Fields for CASH & BANK_EWALLET & BALANCE e-wallet
   const [balanceStr, setBalanceStr] = useState<string>('0');
 
   // Fields for CREDIT_CARD & PAYLATER
@@ -120,7 +135,9 @@ export const WalletsScreen: React.FC<WalletsScreenProps> = ({ onWalletsUpdated }
       }
     }
 
-    const isCreditOrPayLater = w.type === 'CREDIT_CARD' || w.type === 'PAYLATER';
+    const isCreditOrPayLater =
+      w.type === 'CREDIT_CARD' ||
+      (w.type === 'PAYLATER' && ((w.creditLimit || 0) > 0 || (w.currentBalance || 0) > 0));
 
     if (isCreditOrPayLater) {
       const initialDebt = w.currentBalance || 0;
@@ -165,6 +182,8 @@ export const WalletsScreen: React.FC<WalletsScreenProps> = ({ onWalletsUpdated }
     setEditingWallet(null);
     setWalletName('');
     setWalletType(presetType);
+    setSelectedLogoId(undefined);
+    setEwalletSubtype('BALANCE');
     setSelectedColor(
       presetType === 'CREDIT_CARD'
         ? WALLET_DOT_COLORS[3]
@@ -178,7 +197,7 @@ export const WalletsScreen: React.FC<WalletsScreenProps> = ({ onWalletsUpdated }
       presetType === 'CREDIT_CARD'
         ? 'CreditCard'
         : presetType === 'PAYLATER'
-        ? 'Zap'
+        ? 'Smartphone'
         : presetType === 'BANK_EWALLET'
         ? 'Landmark'
         : 'Wallet'
@@ -196,8 +215,13 @@ export const WalletsScreen: React.FC<WalletsScreenProps> = ({ onWalletsUpdated }
     setEditingWallet(w);
     setWalletName(w.name);
     setWalletType(w.type);
+    const matched = getLogoById(w.logoId || w.icon);
+    setSelectedLogoId(matched ? matched.id : undefined);
     setSelectedColor(w.colorGradient ? w.colorGradient[0] : WALLET_DOT_COLORS[0]);
     setSelectedIcon(w.icon || 'Wallet');
+    setEwalletSubtype(
+      (w.creditLimit || 0) > 0 || (w.currentBalance || 0) > 0 ? 'PAYLATER' : 'BALANCE'
+    );
     setBalanceStr((w.balance || 0).toString());
     setCreditLimitStr(w.creditLimit ? w.creditLimit.toString() : '');
     setCurrentBalanceStr((w.currentBalance || 0).toString());
@@ -207,6 +231,33 @@ export const WalletsScreen: React.FC<WalletsScreenProps> = ({ onWalletsUpdated }
     setModalVisible(true);
   };
 
+  const handleSelectLogo = (logo: WalletLogoItem | null) => {
+    if (logo) {
+      setSelectedLogoId(logo.id);
+      setSelectedIcon(logo.id);
+      // Auto-fill wallet name if empty or default placeholder
+      if (
+        !walletName.trim() ||
+        walletName === 'Ngân hàng' ||
+        walletName === 'Ví mới' ||
+        walletName === 'Ví điện tử'
+      ) {
+        setWalletName(logo.name);
+      }
+    } else {
+      setSelectedLogoId(undefined);
+      setSelectedIcon(
+        walletType === 'CREDIT_CARD'
+          ? 'CreditCard'
+          : walletType === 'PAYLATER'
+          ? 'Smartphone'
+          : walletType === 'BANK_EWALLET'
+          ? 'Landmark'
+          : 'Wallet'
+      );
+    }
+  };
+
   const handleSaveWallet = async () => {
     const trimmedName = walletName.trim();
     if (!trimmedName) {
@@ -214,36 +265,32 @@ export const WalletsScreen: React.FC<WalletsScreenProps> = ({ onWalletsUpdated }
       return;
     }
 
-    const isCredit = walletType === 'CREDIT_CARD' || walletType === 'PAYLATER';
+    const isCredit =
+      walletType === 'CREDIT_CARD' ||
+      (walletType === 'PAYLATER' && ewalletSubtype === 'PAYLATER');
 
     try {
+      const walletPayload = {
+        name: trimmedName,
+        type: walletType,
+        icon: selectedLogoId || selectedIcon,
+        logoId: selectedLogoId,
+        colorGradient: [selectedColor, selectedColor] as [string, string],
+        balance: !isCredit ? parseInt(balanceStr, 10) || 0 : undefined,
+        creditLimit: isCredit ? parseInt(creditLimitStr, 10) || 0 : undefined,
+        currentBalance: isCredit ? parseInt(currentBalanceStr, 10) || 0 : undefined,
+        statementDate: isCredit ? parseInt(statementDateStr, 10) || undefined : undefined,
+        dueDate: isCredit ? parseInt(dueDateStr, 10) || undefined : undefined,
+        feeWarningNote: isCredit ? feeWarningNote.trim() || undefined : undefined,
+      };
+
       if (editingWallet) {
         await storageService.updateWallet({
           ...editingWallet,
-          name: trimmedName,
-          type: walletType,
-          icon: selectedIcon,
-          colorGradient: [selectedColor, selectedColor],
-          balance: !isCredit ? parseInt(balanceStr, 10) || 0 : undefined,
-          creditLimit: isCredit ? parseInt(creditLimitStr, 10) || 0 : undefined,
-          currentBalance: isCredit ? parseInt(currentBalanceStr, 10) || 0 : undefined,
-          statementDate: isCredit ? parseInt(statementDateStr, 10) || undefined : undefined,
-          dueDate: isCredit ? parseInt(dueDateStr, 10) || undefined : undefined,
-          feeWarningNote: isCredit ? feeWarningNote.trim() || undefined : undefined,
+          ...walletPayload,
         });
       } else {
-        await storageService.addWallet({
-          name: trimmedName,
-          type: walletType,
-          icon: selectedIcon,
-          colorGradient: [selectedColor, selectedColor],
-          balance: !isCredit ? parseInt(balanceStr, 10) || 0 : undefined,
-          creditLimit: isCredit ? parseInt(creditLimitStr, 10) || 0 : undefined,
-          currentBalance: isCredit ? parseInt(currentBalanceStr, 10) || 0 : undefined,
-          statementDate: isCredit ? parseInt(statementDateStr, 10) || undefined : undefined,
-          dueDate: isCredit ? parseInt(dueDateStr, 10) || undefined : undefined,
-          feeWarningNote: isCredit ? feeWarningNote.trim() || undefined : undefined,
-        });
+        await storageService.addWallet(walletPayload);
       }
 
       setModalVisible(false);
@@ -282,41 +329,36 @@ export const WalletsScreen: React.FC<WalletsScreenProps> = ({ onWalletsUpdated }
     );
   };
 
-  const renderIcon = (iconName?: string, color: string = colors.textSecondary, size: number = 20) => {
-    switch (iconName) {
-      case 'Landmark':
-        return <Landmark size={size} color={color} />;
-      case 'PiggyBank':
-        return <PiggyBank size={size} color={color} />;
-      case 'CreditCard':
-        return <CreditCard size={size} color={color} />;
-      case 'Zap':
-        return <Zap size={size} color={color} />;
-      case 'Wallet':
-      default:
-        return <WalletIcon size={size} color={color} />;
-    }
-  };
-
   const getWalletTypeBadge = (type: WalletType) => {
     switch (type) {
       case 'CASH':
         return { label: 'Tiền mặt', color: colors.income };
       case 'BANK_EWALLET':
-        return { label: 'Ngân hàng / Ví', color: colors.primaryLight };
+        return { label: 'Ngân hàng', color: colors.primaryLight };
       case 'CREDIT_CARD':
         return { label: 'Thẻ tín dụng', color: colors.expense };
       case 'PAYLATER':
-        return { label: 'Mua trước trả sau', color: colors.warning };
+        return { label: 'Ví điện tử', color: colors.warning };
     }
   };
 
   const filteredWallets = wallets.filter((w) => {
-    const isCredit = w.type === 'CREDIT_CARD' || w.type === 'PAYLATER';
-    if (filterMode === 'ASSETS') return !isCredit;
-    if (filterMode === 'LIABILITIES') return isCredit;
+    const fin = getWalletFinancials(w);
+    if (filterMode === 'ASSETS') return !fin.isCreditOrPayLater;
+    if (filterMode === 'LIABILITIES') return fin.isCreditOrPayLater;
     return true;
   });
+
+  const popularLogos = useMemo(() => {
+    if (walletType === 'PAYLATER') {
+      return EWALLET_LOGOS.slice(0, 10);
+    }
+    return BANK_LOGOS.slice(0, 10);
+  }, [walletType]);
+
+  const selectedLogoObject = useMemo(() => {
+    return getLogoById(selectedLogoId);
+  }, [selectedLogoId]);
 
   return (
     <View style={styles.container}>
@@ -337,7 +379,7 @@ export const WalletsScreen: React.FC<WalletsScreenProps> = ({ onWalletsUpdated }
           <View>
             <Text style={styles.pageTitle}>Quản lý ví đa nguồn</Text>
             <Text style={styles.pageSubTitle}>
-              Tiền mặt • Ngân hàng • Thẻ tín dụng • Trả sau
+              Tiền mặt • Ngân hàng • Thẻ tín dụng • Ví điện tử
             </Text>
           </View>
 
@@ -385,7 +427,7 @@ export const WalletsScreen: React.FC<WalletsScreenProps> = ({ onWalletsUpdated }
                 ? 'Tất cả nguồn'
                 : mode === 'ASSETS'
                 ? 'Khả dụng (Cash/Bank)'
-                : 'Tín dụng & Trả sau';
+                : 'Tín dụng & Ví điện tử';
             return (
               <TouchableOpacity
                 key={mode}
@@ -420,13 +462,20 @@ export const WalletsScreen: React.FC<WalletsScreenProps> = ({ onWalletsUpdated }
                 style={styles.cardWrapper}
               >
                 <View style={styles.cardInner}>
-                  {/* Top: Icon + Tên + Chấm màu nhận diện (Badge Indicator) */}
+                  {/* Top: Logo SVG thương hiệu + Tên + Chấm màu nhận diện */}
                   <View style={styles.cardTopRow}>
                     <View style={styles.cardIconAndName}>
-                      <View style={styles.iconBadge}>
-                        {renderIcon(w.icon, colors.textPrimary, 18)}
-                      </View>
-                      <View>
+                      <WalletLogo
+                        logoId={w.logoId || w.icon}
+                        icon={w.icon}
+                        name={w.name}
+                        type={w.type}
+                        size={26}
+                        containerSize={44}
+                        containerBg="#0F111A"
+                        borderColor="rgba(255, 255, 255, 0.08)"
+                      />
+                      <View style={{ marginLeft: 2 }}>
                         <View style={styles.nameRow}>
                           <View style={[styles.dotIndicator, { backgroundColor: dotColor }]} />
                           <Text style={styles.cardWalletName}>{w.name}</Text>
@@ -518,31 +567,31 @@ export const WalletsScreen: React.FC<WalletsScreenProps> = ({ onWalletsUpdated }
                           <View style={styles.cycleBadge}>
                             <Calendar size={11} color={colors.warning} style={{ marginRight: 4 }} />
                             <Text style={[styles.cycleBadgeText, { color: colors.warning }]}>
-                              Hạn TT: ngày {w.dueDate}
+                              Hạn trả: ngày {w.dueDate}
                             </Text>
                           </View>
                         ) : null}
+
+                        <View style={styles.cycleBadge}>
+                          <TrendingDown size={11} color={colors.expense} style={{ marginRight: 4 }} />
+                          <Text style={styles.cycleBadgeText}>
+                            Chi tháng này: {formatVND(fin.monthExp)}
+                          </Text>
+                        </View>
                       </View>
 
-                      {/* Ghi chú cảnh báo phí duy trì */}
+                      {/* Ghi chú cảnh báo phí nếu có */}
                       {w.feeWarningNote ? (
                         <View style={styles.feeWarningBox}>
-                          <Info size={12} color={colors.warning} style={{ marginRight: 5 }} />
-                          <Text style={styles.feeWarningText} numberOfLines={2}>
-                            {w.feeWarningNote}
-                          </Text>
+                          <Info size={12} color={colors.warning} style={{ marginRight: 6 }} />
+                          <Text style={styles.feeWarningText}>{w.feeWarningNote}</Text>
                         </View>
                       ) : null}
                     </View>
                   ) : (
                     <View style={styles.cashBody}>
-                      <Text style={styles.statSubLabel}>SỐ DƯ KHẢ DỤNG</Text>
-                      <Text
-                        style={[
-                          styles.cashAmountValue,
-                          (fin.effectiveBalance || 0) < 0 && { color: colors.expense },
-                        ]}
-                      >
+                      <Text style={styles.statSubLabel}>SỐ DƯ HIỆN TẠI</Text>
+                      <Text style={styles.cashAmountValue}>
                         {formatVND(fin.effectiveBalance || 0)}
                       </Text>
 
@@ -573,7 +622,7 @@ export const WalletsScreen: React.FC<WalletsScreenProps> = ({ onWalletsUpdated }
         onRequestClose={() => setModalVisible(false)}
       >
         <View style={styles.modalBackdrop}>
-          <ScrollView contentContainerStyle={styles.modalScroll}>
+          <ScrollView contentContainerStyle={styles.modalScroll} keyboardShouldPersistTaps="handled">
             <View style={styles.modalBox}>
               <View style={styles.modalBoxHeader}>
                 <Text style={styles.modalBoxTitle}>
@@ -592,9 +641,9 @@ export const WalletsScreen: React.FC<WalletsScreenProps> = ({ onWalletsUpdated }
               <View style={styles.typeSelectorGrid}>
                 {[
                   { key: 'CASH', label: 'Tiền mặt', icon: WalletIcon },
-                  { key: 'BANK_EWALLET', label: 'Ngân hàng / Ví', icon: Landmark },
+                  { key: 'BANK_EWALLET', label: 'Ngân hàng', icon: Landmark },
                   { key: 'CREDIT_CARD', label: 'Thẻ tín dụng', icon: CreditCard },
-                  { key: 'PAYLATER', label: 'Mua trước trả sau', icon: Zap },
+                  { key: 'PAYLATER', label: 'Ví điện tử', icon: Smartphone },
                 ].map((item) => {
                   const isSelected = walletType === item.key;
                   const IconComp = item.icon;
@@ -605,7 +654,14 @@ export const WalletsScreen: React.FC<WalletsScreenProps> = ({ onWalletsUpdated }
                         styles.typeGridBtn,
                         isSelected && styles.typeGridBtnSelected,
                       ]}
-                      onPress={() => setWalletType(item.key as WalletType)}
+                      onPress={() => {
+                        const newType = item.key as WalletType;
+                        setWalletType(newType);
+                        if (newType === 'CASH') {
+                          setSelectedLogoId(undefined);
+                          setSelectedIcon('Wallet');
+                        }
+                      }}
                       activeOpacity={0.7}
                     >
                       <IconComp
@@ -626,18 +682,163 @@ export const WalletsScreen: React.FC<WalletsScreenProps> = ({ onWalletsUpdated }
                 })}
               </View>
 
+              {/* Tùy chọn Logo thương hiệu (Cho Ngân hàng, Thẻ tín dụng, Ví điện tử) */}
+              {walletType !== 'CASH' && (
+                <View style={styles.logoSection}>
+                  <View style={styles.logoSectionHeader}>
+                    <Text style={styles.fieldLabel}>Logo thương hiệu</Text>
+                    <TouchableOpacity
+                      onPress={() => setLogoPickerVisible(true)}
+                      style={styles.openPickerBtn}
+                      activeOpacity={0.7}
+                    >
+                      <Text style={styles.openPickerBtnText}>
+                        {selectedLogoId ? 'Đổi logo khác' : 'Chọn logo'}
+                      </Text>
+                      <ChevronRight size={14} color={colors.primaryBright} />
+                    </TouchableOpacity>
+                  </View>
+
+                  {/* Banner hiển thị logo đang chọn */}
+                  <TouchableOpacity
+                    style={styles.selectedLogoBanner}
+                    onPress={() => setLogoPickerVisible(true)}
+                    activeOpacity={0.8}
+                  >
+                    <WalletLogo
+                      logoId={selectedLogoId}
+                      icon={selectedIcon}
+                      name={walletName}
+                      type={walletType}
+                      size={28}
+                      containerSize={44}
+                      containerBg="#0F111A"
+                      borderColor={selectedLogoId ? colors.primary : 'rgba(255, 255, 255, 0.1)'}
+                    />
+                    <View style={{ flex: 1, marginLeft: 12 }}>
+                      <Text style={styles.selectedLogoTitle}>
+                        {selectedLogoObject
+                          ? selectedLogoObject.name
+                          : 'Chưa chọn logo thương hiệu'}
+                      </Text>
+                      <Text style={styles.selectedLogoDesc}>
+                        {selectedLogoObject
+                          ? selectedLogoObject.category === 'bank'
+                            ? 'Logo ngân hàng Việt Nam'
+                            : 'Logo ví điện tử'
+                          : 'Chạm để chọn từ 84 logo ngân hàng & ví'}
+                      </Text>
+                    </View>
+                    <Pencil size={15} color={colors.textSecondary} />
+                  </TouchableOpacity>
+
+                  {/* Danh sách logo phổ biến gợi ý nhanh */}
+                  <Text style={styles.quickLogoLabel}>Gợi ý phổ biến (Chạm chọn ngay):</Text>
+                  <ScrollView
+                    horizontal
+                    showsHorizontalScrollIndicator={false}
+                    contentContainerStyle={styles.quickLogoScroll}
+                  >
+                    {popularLogos.map((logo) => {
+                      const isSel = selectedLogoId === logo.id;
+                      return (
+                        <TouchableOpacity
+                          key={logo.id}
+                          style={[
+                            styles.quickLogoChip,
+                            isSel && styles.quickLogoChipSelected,
+                          ]}
+                          onPress={() => handleSelectLogo(logo)}
+                          activeOpacity={0.7}
+                        >
+                          <SvgXml xml={logo.xml} width={22} height={22} />
+                          <Text
+                            style={[
+                              styles.quickLogoChipText,
+                              isSel && styles.quickLogoChipTextSelected,
+                            ]}
+                          >
+                            {logo.name}
+                          </Text>
+                          {isSel && (
+                            <View style={styles.quickLogoCheck}>
+                              <Check size={9} color="#FFFFFF" strokeWidth={3} />
+                            </View>
+                          )}
+                        </TouchableOpacity>
+                      );
+                    })}
+                  </ScrollView>
+                </View>
+              )}
+
               {/* Tên ví */}
               <Text style={styles.fieldLabel}>Tên ví / Tài khoản *</Text>
               <TextInput
                 style={styles.textInput}
-                placeholder="VD: Techcombank, Shopee SPayLater, Visa Signature..."
+                placeholder="VD: Techcombank, Shopee SPayLater, MoMo, Visa Signature..."
                 placeholderTextColor={colors.textMuted}
                 value={walletName}
                 onChangeText={setWalletName}
               />
 
+              {/* Tùy biến hình thức cho Ví điện tử (Số dư vs Trả sau) */}
+              {walletType === 'PAYLATER' && (
+                <View style={{ marginTop: 8 }}>
+                  <Text style={styles.fieldLabel}>Hình thức ví điện tử *</Text>
+                  <View style={styles.ewalletSubtypeRow}>
+                    <TouchableOpacity
+                      style={[
+                        styles.ewalletSubtypeBtn,
+                        ewalletSubtype === 'BALANCE' && styles.ewalletSubtypeBtnActive,
+                      ]}
+                      onPress={() => setEwalletSubtype('BALANCE')}
+                      activeOpacity={0.7}
+                    >
+                      <CircleDollarSign
+                        size={14}
+                        color={ewalletSubtype === 'BALANCE' ? colors.income : colors.textMuted}
+                        style={{ marginRight: 6 }}
+                      />
+                      <Text
+                        style={[
+                          styles.ewalletSubtypeText,
+                          ewalletSubtype === 'BALANCE' && styles.ewalletSubtypeTextActive,
+                        ]}
+                      >
+                        Ví số dư (MoMo, ZaloPay...)
+                      </Text>
+                    </TouchableOpacity>
+
+                    <TouchableOpacity
+                      style={[
+                        styles.ewalletSubtypeBtn,
+                        ewalletSubtype === 'PAYLATER' && styles.ewalletSubtypeBtnActive,
+                      ]}
+                      onPress={() => setEwalletSubtype('PAYLATER')}
+                      activeOpacity={0.7}
+                    >
+                      <Zap
+                        size={14}
+                        color={ewalletSubtype === 'PAYLATER' ? colors.warning : colors.textMuted}
+                        style={{ marginRight: 6 }}
+                      />
+                      <Text
+                        style={[
+                          styles.ewalletSubtypeText,
+                          ewalletSubtype === 'PAYLATER' && styles.ewalletSubtypeTextActive,
+                        ]}
+                      >
+                        Ví trả sau (SPayLater...)
+                      </Text>
+                    </TouchableOpacity>
+                  </View>
+                </View>
+              )}
+
               {/* Form tùy biến theo Loại ví */}
-              {walletType === 'CREDIT_CARD' || walletType === 'PAYLATER' ? (
+              {walletType === 'CREDIT_CARD' ||
+              (walletType === 'PAYLATER' && ewalletSubtype === 'PAYLATER') ? (
                 <View style={styles.conditionalSection}>
                   <Text style={styles.fieldLabel}>Hạn mức tối đa được cấp (VNĐ) *</Text>
                   <TextInput
@@ -752,6 +953,15 @@ export const WalletsScreen: React.FC<WalletsScreenProps> = ({ onWalletsUpdated }
           </ScrollView>
         </View>
       </Modal>
+
+      {/* Modal Chọn Logo Thương Hiệu Toàn Diện */}
+      <LogoPickerModal
+        visible={logoPickerVisible}
+        walletType={walletType}
+        selectedLogoId={selectedLogoId}
+        onClose={() => setLogoPickerVisible(false)}
+        onSelectLogo={handleSelectLogo}
+      />
     </View>
   );
 };
@@ -797,7 +1007,7 @@ const styles = StyleSheet.create({
   },
   summaryBox: {
     flexDirection: 'row',
-    backgroundColor: colors.surface, // Solid Flat Matte Dark
+    backgroundColor: colors.surface,
     borderRadius: 18,
     padding: 14,
     borderWidth: 1,
@@ -883,7 +1093,7 @@ const styles = StyleSheet.create({
     gap: 12,
   },
   cardWrapper: {
-    backgroundColor: colors.surface, // Solid Flat Matte Dark #161926
+    backgroundColor: colors.surface,
     borderRadius: 20,
     borderWidth: 1,
     borderColor: colors.border,
@@ -900,15 +1110,7 @@ const styles = StyleSheet.create({
   cardIconAndName: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 12,
-  },
-  iconBadge: {
-    width: 38,
-    height: 38,
-    borderRadius: 12,
-    backgroundColor: colors.surfaceElevated,
-    justifyContent: 'center',
-    alignItems: 'center',
+    gap: 10,
   },
   nameRow: {
     flexDirection: 'row',
@@ -1136,6 +1338,131 @@ const styles = StyleSheet.create({
     color: colors.primaryBright,
     fontWeight: '700',
   },
+
+  /* Logo selection section in modal */
+  logoSection: {
+    marginTop: 6,
+    backgroundColor: 'rgba(255, 255, 255, 0.02)',
+    borderRadius: 14,
+    padding: 12,
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.05)',
+  },
+  logoSectionHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 8,
+  },
+  openPickerBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 4,
+    paddingHorizontal: 8,
+    borderRadius: 6,
+    backgroundColor: 'rgba(139, 92, 246, 0.1)',
+  },
+  openPickerBtnText: {
+    fontSize: 11,
+    color: colors.primaryBright,
+    fontWeight: '600',
+    marginRight: 2,
+  },
+  selectedLogoBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#0F111A',
+    borderRadius: 12,
+    padding: 10,
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.07)',
+    marginBottom: 10,
+  },
+  selectedLogoTitle: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: colors.textPrimary,
+  },
+  selectedLogoDesc: {
+    fontSize: 11,
+    color: colors.textMuted,
+    marginTop: 2,
+  },
+  quickLogoLabel: {
+    fontSize: 11,
+    color: colors.textMuted,
+    fontWeight: '500',
+    marginBottom: 6,
+  },
+  quickLogoScroll: {
+    gap: 8,
+    paddingBottom: 2,
+  },
+  quickLogoChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#0F111A',
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.07)',
+    borderRadius: 10,
+    paddingVertical: 6,
+    paddingHorizontal: 10,
+    position: 'relative',
+  },
+  quickLogoChipSelected: {
+    borderColor: colors.primary,
+    backgroundColor: 'rgba(139, 92, 246, 0.12)',
+  },
+  quickLogoChipText: {
+    fontSize: 12,
+    color: colors.textSecondary,
+    fontWeight: '600',
+    marginLeft: 6,
+  },
+  quickLogoChipTextSelected: {
+    color: colors.primaryBright,
+  },
+  quickLogoCheck: {
+    marginLeft: 4,
+    width: 14,
+    height: 14,
+    borderRadius: 7,
+    backgroundColor: colors.primary,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+
+  /* E-wallet Subtype row */
+  ewalletSubtypeRow: {
+    flexDirection: 'row',
+    gap: 8,
+  },
+  ewalletSubtypeBtn: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: colors.bg,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: 10,
+    paddingVertical: 9,
+    paddingHorizontal: 6,
+  },
+  ewalletSubtypeBtnActive: {
+    borderColor: colors.primaryBright,
+    backgroundColor: colors.primarySoft,
+  },
+  ewalletSubtypeText: {
+    fontSize: 11,
+    color: colors.textMuted,
+    fontWeight: '600',
+  },
+  ewalletSubtypeTextActive: {
+    color: colors.textPrimary,
+    fontWeight: '700',
+  },
+
   textInput: {
     backgroundColor: colors.bg,
     borderWidth: 1,

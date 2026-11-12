@@ -32,6 +32,7 @@ import { syncService } from '../services/sync';
 import { formatVND } from '../utils/format';
 import { CategoryIcon, getCategoryConfig } from '../components/CategoryIcon';
 import { Numpad } from '../components/Numpad';
+import { WalletLogo } from '../components/WalletLogo';
 import { colors } from '../theme/colors';
 
 interface QuickEntryModalProps {
@@ -364,7 +365,6 @@ export const QuickEntryModal: React.FC<QuickEntryModalProps> = ({
           >
             {wallets.map((w) => {
               const isSelected = wallet === w.name;
-              const IconComponent = getWalletIcon(w.icon);
               const chipColor = w.colorGradient ? w.colorGradient[0] : colors.primaryBright;
               return (
                 <TouchableOpacity
@@ -379,10 +379,13 @@ export const QuickEntryModal: React.FC<QuickEntryModalProps> = ({
                   onPress={() => setWallet(w.name)}
                   activeOpacity={0.7}
                 >
-                  <IconComponent
-                    size={14}
-                    color={isSelected ? chipColor : colors.textMuted}
-                    style={{ marginRight: 5 }}
+                  <WalletLogo
+                    logoId={w.logoId || w.icon}
+                    icon={w.icon}
+                    name={w.name}
+                    type={w.type}
+                    size={15}
+                    style={{ marginRight: 6 }}
                   />
                   <Text
                     style={[

@@ -19,12 +19,13 @@ export interface Wallet {
   name: string; // VD: Tiền mặt, TPBank, Momo, Shopee SPayLater, Visa Signature
   type: WalletType;
   icon: string; // Tên icon hoặc brand identifier
+  logoId?: string; // ID logo ngân hàng / ví điện tử (vd: 'bank_tpbank', 'ewallet_momo')
   colorGradient: [string, string]; // 2 mã hex làm nền gradient cho card ví
   
-  // Dành cho CASH và BANK_EWALLET:
+  // Dành cho CASH, BANK_EWALLET và Ví điện tử số dư:
   balance?: number; // Số dư khả dụng thực tế
   
-  // Dành cho CREDIT_CARD và PAYLATER:
+  // Dành cho CREDIT_CARD và PAYLATER (Ví điện tử trả sau):
   creditLimit?: number;      // Hạn mức tối đa được cấp
   currentBalance?: number;   // Dư nợ hiện tại (số tiền đang nợ)
   statementDate?: number;    // Ngày chốt sao kê hàng tháng (VD: ngày 25)
@@ -79,16 +80,18 @@ export const DEFAULT_WALLETS: Wallet[] = [
     id: 'wallet_bank',
     name: 'Tài khoản TPBank',
     type: 'BANK_EWALLET',
-    icon: 'Landmark',
+    icon: 'bank_tpbank',
+    logoId: 'bank_tpbank',
     colorGradient: ['#8B5CF6', '#6366F1'],
     balance: 28500000,
     createdAt: Date.now() - 25 * 86400000,
   },
   {
     id: 'wallet_credit',
-    name: 'Visa Signature',
+    name: 'Visa Techcombank',
     type: 'CREDIT_CARD',
-    icon: 'CreditCard',
+    icon: 'bank_techcombank',
+    logoId: 'bank_techcombank',
     colorGradient: ['#F43F5E', '#BE123C'],
     creditLimit: 50000000,
     currentBalance: 7500000,
@@ -101,7 +104,8 @@ export const DEFAULT_WALLETS: Wallet[] = [
     id: 'wallet_spaylater',
     name: 'Shopee SPayLater',
     type: 'PAYLATER',
-    icon: 'Zap',
+    icon: 'ewallet_shopeepay',
+    logoId: 'ewallet_shopeepay',
     colorGradient: ['#F59E0B', '#D97706'],
     creditLimit: 10000000,
     currentBalance: 1250000,
@@ -113,8 +117,9 @@ export const DEFAULT_WALLETS: Wallet[] = [
   {
     id: 'wallet_momo',
     name: 'Ví MoMo',
-    type: 'BANK_EWALLET',
-    icon: 'PiggyBank',
+    type: 'PAYLATER',
+    icon: 'ewallet_momo',
+    logoId: 'ewallet_momo',
     colorGradient: ['#EC4899', '#DB2777'],
     balance: 2150000,
     createdAt: Date.now() - 10 * 86400000,

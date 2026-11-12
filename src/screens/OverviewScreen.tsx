@@ -146,7 +146,7 @@ export const OverviewScreen: React.FC<OverviewScreenProps> = ({
         }
       }
 
-      // Net Worth = (Tiền mặt + Ngân hàng khả dụng) - (Dư nợ Thẻ tín dụng + Trả sau)
+      // Net Worth = (Tiền mặt + Ngân hàng khả dụng + Ví số dư) - (Dư nợ Thẻ tín dụng + Ví trả sau)
       let totalCashAndBank = 0;
       let totalDebts = 0;
 
@@ -154,7 +154,11 @@ export const OverviewScreen: React.FC<OverviewScreenProps> = ({
         const inc = walletIncome.get(w.name) || 0;
         const exp = walletExpense.get(w.name) || 0;
 
-        if (w.type === 'CREDIT_CARD' || w.type === 'PAYLATER') {
+        const isCreditOrPayLater =
+          w.type === 'CREDIT_CARD' ||
+          (w.type === 'PAYLATER' && ((w.creditLimit || 0) > 0 || (w.currentBalance || 0) > 0));
+
+        if (isCreditOrPayLater) {
           const debt = Math.max((w.currentBalance || 0) + exp - inc, 0);
           totalDebts += debt;
         } else {
