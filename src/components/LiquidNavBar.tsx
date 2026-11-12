@@ -7,14 +7,13 @@ import {
   Platform,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import Svg, { Path } from 'react-native-svg';
 import Animated, {
   useSharedValue,
+  useAnimatedProps,
   useAnimatedStyle,
   withTiming,
-  withSpring,
-  withSequence,
   Easing,
-  runOnJS,
 } from 'react-native-reanimated';
 import * as Haptics from 'expo-haptics';
 import {
@@ -34,16 +33,26 @@ interface LiquidNavBarProps {
   isQuickEntryOpen: boolean;
 }
 
+const AnimatedPath = Animated.createAnimatedComponent(Path);
+
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
-const BAR_HEIGHT = 68;
-const DROPLET_SIZE = 44;
+const BAR_HEIGHT = 64;
+const CORNER_RADIUS = 20;
+const CIRCLE_RADIUS = 24;
+const CIRCLE_SIZE = CIRCLE_RADIUS * 2; // 48px
+const NOTCH_WIDTH = 64;
+const NOTCH_DEPTH = 32;
+const SIDE_PADDING = 14;
 const TOTAL_TABS = 5;
+
+const EASING_CURVE = Easing.bezier(0.25, 0.1, 0.25, 1);
+const ANIMATION_DURATION = 300;
 
 const triggerHaptic = () => {
   try {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
   } catch {
-    // Ignore haptic error on unsupported devices
+    // Ignore haptic error on unsupported platforms
   }
 };
 
@@ -54,10 +63,11 @@ export const LiquidNavBar: React.FC<LiquidNavBarProps> = ({
   isQuickEntryOpen,
 }) => {
   const insets = useSafeAreaInsets();
-  const [barWidth, setBarWidth] = useState<number>(SCREEN_WIDTH);
-  const tabWidth = barWidth / TOTAL_TABS;
+  const [barWidth, setBarWidth] = useState<number>(SCREEN_WIDTH - 32);
 
-  // Chuyển tab name sang index 0, 1, 3, 4 (2 là nút +)
+  const usableWidth = barWidth - SIDE_PADDING * 2;
+  const tabWidth = usableWidth / TOTAL_TABS;
+
   const getIndexFromTab = (tab: MainTabType): number => {
     switch (tab) {
       case 'OVERVIEW':
@@ -73,129 +83,65 @@ export const LiquidNavBar: React.FC<LiquidNavBarProps> = ({
     }
   };
 
+  const getCenterForIndex = (idx: number, width: number): number => {
+    const usable = width - SIDE_PADDING * 2;
+    const tW = usable / TOTAL_TABS;
+    return SIDE_PADDING + idx * tW + tW / 2;
+  };
+
   const activeIndex = isQuickEntryOpen ? 2 : getIndexFromTab(currentTab);
-  const prevIndexRef = useRef<number>(activeIndex);
+  const initialCenter = getCenterForIndex(activeIndex, barWidth);
 
-  // 1. Shared values cho Giọt nước (Liquid Droplet)
-  const dropletX = useSharedValue(
-    getIndexFromTab(currentTab) * (SCREEN_WIDTH / TOTAL_TABS) +
-      (SCREEN_WIDTH / TOTAL_TABS - DROPLET_SIZE) / 2
-  );
-  const dropletY = useSharedValue(0);
-  const dropletScaleX = useSharedValue(1);
-  const dropletScaleY = useSharedValue(1);
+  // 1. Shared value cho tọa độ tâm của vết lõm và vòng tròn active
+  const notchCenterX = useSharedValue(initialCenter);
 
-  // 2. Shared values cho Gợn sóng (Ripple)
-  const rippleX = useSharedValue(0);
-  const rippleScale = useSharedValue(0);
-  const rippleOpacity = useSharedValue(0);
+  // 2. Shared values cho vị trí nâng lên/hạ xuống của từng Icon (Index 0 -> 4)
+  const icon0Y = useSharedValue(activeIndex === 0 ? -22 : 0);
+  const icon1Y = useSharedValue(activeIndex === 1 ? -22 : 0);
+  const icon2Y = useSharedValue(activeIndex === 2 ? -22 : 0);
+  const icon3Y = useSharedValue(activeIndex === 3 ? -22 : 0);
+  const icon4Y = useSharedValue(activeIndex === 4 ? -22 : 0);
 
-  // 3. Shared values cho Phao nổi của từng Icon (Index 0 -> 4)
-  const icon0Y = useSharedValue(activeIndex === 0 ? -4 : 0);
-  const icon0Scale = useSharedValue(activeIndex === 0 ? 1.15 : 1);
-
-  const icon1Y = useSharedValue(activeIndex === 1 ? -4 : 0);
-  const icon1Scale = useSharedValue(activeIndex === 1 ? 1.15 : 1);
-
-  const icon2Y = useSharedValue(activeIndex === 2 ? -4 : 0);
-  const icon2Scale = useSharedValue(activeIndex === 2 ? 1.15 : 1);
-
-  const icon3Y = useSharedValue(activeIndex === 3 ? -4 : 0);
-  const icon3Scale = useSharedValue(activeIndex === 3 ? 1.15 : 1);
-
-  const icon4Y = useSharedValue(activeIndex === 4 ? -4 : 0);
-  const icon4Scale = useSharedValue(activeIndex === 4 ? 1.15 : 1);
-
-  const getIconValues = (idx: number) => {
+  const getIconSharedValue = (idx: number) => {
     switch (idx) {
       case 0:
-        return { y: icon0Y, scale: icon0Scale };
+        return icon0Y;
       case 1:
-        return { y: icon1Y, scale: icon1Scale };
+        return icon1Y;
       case 2:
-        return { y: icon2Y, scale: icon2Scale };
+        return icon2Y;
       case 3:
-        return { y: icon3Y, scale: icon3Scale };
+        return icon3Y;
       case 4:
       default:
-        return { y: icon4Y, scale: icon4Scale };
+        return icon4Y;
     }
   };
 
-  // Cập nhật vị trí giọt nước khi layout thay đổi
+  // Cập nhật vị trí khi activeIndex hoặc barWidth thay đổi
   useEffect(() => {
-    const targetX =
-      activeIndex * tabWidth + (tabWidth - DROPLET_SIZE) / 2;
-    dropletX.value = targetX;
-  }, [barWidth]);
+    const targetX = getCenterForIndex(activeIndex, barWidth);
 
-  // Kích hoạt chuỗi chuyển động Parabol khi activeIndex thay đổi
-  const animateToTab = (newIndex: number, oldIndex: number) => {
-    const targetX = newIndex * tabWidth + (tabWidth - DROPLET_SIZE) / 2;
-
-    // A. Quỹ đạo ngang translateX
-    dropletX.value = withSpring(targetX, {
-      damping: 15,
-      stiffness: 160,
+    // Trượt ngang mượt mà bằng withTiming cubic-bezier
+    notchCenterX.value = withTiming(targetX, {
+      duration: ANIMATION_DURATION,
+      easing: EASING_CURVE,
     });
 
-    // B. Quỹ đạo nảy Parabol dọc translateY (vồng lên không trung rồi rơi tõm xuống)
-    dropletY.value = withSequence(
-      withTiming(-16, { duration: 140, easing: Easing.out(Easing.quad) }),
-      withSpring(0, { damping: 11, stiffness: 220 })
-    );
-
-    // C. Biến dạng giọt nước đàn hồi (bay dãn dọc -> chạm dẹt ngang -> trở lại tròn)
-    dropletScaleX.value = withSequence(
-      withTiming(1.15, { duration: 140 }),
-      withTiming(1.2, { duration: 80 }),
-      withSpring(1, { damping: 12, stiffness: 200 })
-    );
-
-    dropletScaleY.value = withSequence(
-      withTiming(0.85, { duration: 140 }),
-      withTiming(0.8, { duration: 80 }),
-      withSpring(1, { damping: 12, stiffness: 200 })
-    );
-
-    // D. Gợn sóng mặt nước tại đích đến ngay khi giọt nước rơi trúng (~140ms)
-    setTimeout(() => {
-      triggerHaptic();
-      rippleX.value = targetX;
-      rippleScale.value = 0.5;
-      rippleOpacity.value = 0.8;
-
-      rippleScale.value = withTiming(1.6, { duration: 350 });
-      rippleOpacity.value = withTiming(0, { duration: 350 });
-    }, 140);
-
-    // E. Hiệu ứng phao nổi cho icon cũ & mới
+    // Nâng icon được chọn lên đúng tâm vòng tròn và hạ các icon khác xuống
     for (let i = 0; i < TOTAL_TABS; i++) {
-      const { y, scale } = getIconValues(i);
-      if (i === newIndex) {
-        // Icon được chọn: chìm nhẹ 4px rồi nổi nảy lên -4px
-        y.value = withSequence(
-          withTiming(4, { duration: 90 }),
-          withSpring(-4, { damping: 10, stiffness: 200 })
-        );
-        scale.value = withSpring(1.15, { damping: 12, stiffness: 200 });
-      } else {
-        // Icon không được chọn: chìm về mặt nước bình thường
-        y.value = withSpring(0, { damping: 14, stiffness: 200 });
-        scale.value = withSpring(1, { damping: 14, stiffness: 200 });
-      }
-    }
-  };
-
-  useEffect(() => {
-    if (prevIndexRef.current !== activeIndex) {
-      animateToTab(activeIndex, prevIndexRef.current);
-      prevIndexRef.current = activeIndex;
+      const sv = getIconSharedValue(i);
+      sv.value = withTiming(i === activeIndex ? -22 : 0, {
+        duration: ANIMATION_DURATION,
+        easing: EASING_CURVE,
+      });
     }
   }, [activeIndex, barWidth]);
 
   // Xử lý chạm tab
   const handlePressTab = (idx: number) => {
+    triggerHaptic();
+
     if (idx === 2) {
       onPressPlus();
       return;
@@ -210,38 +156,69 @@ export const LiquidNavBar: React.FC<LiquidNavBarProps> = ({
     onSelectTab(targetTab);
   };
 
-  // Animated styles
-  const dropletAnimatedStyle = useAnimatedStyle(() => ({
-    transform: [
-      { translateX: dropletX.value },
-      { translateY: dropletY.value },
-      { scaleX: dropletScaleX.value },
-      { scaleY: dropletScaleY.value },
-    ],
+  // Animated Props cho SVG Path của vết lõm chữ U (Cubic Bezier mượt mà)
+  const animatedPathProps = useAnimatedProps(() => {
+    'worklet';
+    const x = notchCenterX.value;
+    const W = barWidth;
+    const H = BAR_HEIGHT;
+    const R = CORNER_RADIUS;
+    const nw = NOTCH_WIDTH;
+    const nd = NOTCH_DEPTH;
+
+    const leftNotch = Math.max(R, x - nw / 2);
+    const rightNotch = Math.min(W - R, x + nw / 2);
+    const cp1x = x - nw / 4;
+    const cp2x = x - nw / 3;
+    const cp3x = x + nw / 3;
+    const cp4x = x + nw / 4;
+
+    const d = `M 0 ${R} A ${R} ${R} 0 0 1 ${R} 0 L ${leftNotch} 0 C ${cp1x} 0, ${cp2x} ${nd}, ${x} ${nd} C ${cp3x} ${nd}, ${cp4x} 0, ${rightNotch} 0 L ${W - R} 0 A ${R} ${R} 0 0 1 ${W} ${R} L ${W} ${H - R} A ${R} ${R} 0 0 1 ${W - R} ${H} L ${R} ${H} A ${R} ${R} 0 0 1 0 ${H - R} Z`;
+
+    return { d };
+  }, [barWidth]);
+
+  // Animated Props cho đường viền mép trên tinh tế (Stroke Line)
+  const animatedStrokeProps = useAnimatedProps(() => {
+    'worklet';
+    const x = notchCenterX.value;
+    const W = barWidth;
+    const R = CORNER_RADIUS;
+    const nw = NOTCH_WIDTH;
+    const nd = NOTCH_DEPTH;
+
+    const leftNotch = Math.max(R, x - nw / 2);
+    const rightNotch = Math.min(W - R, x + nw / 2);
+    const cp1x = x - nw / 4;
+    const cp2x = x - nw / 3;
+    const cp3x = x + nw / 3;
+    const cp4x = x + nw / 4;
+
+    const d = `M 0 ${R} A ${R} ${R} 0 0 1 ${R} 0 L ${leftNotch} 0 C ${cp1x} 0, ${cp2x} ${nd}, ${x} ${nd} C ${cp3x} ${nd}, ${cp4x} 0, ${rightNotch} 0 L ${W - R} 0 A ${R} ${R} 0 0 1 ${W} ${R}`;
+
+    return { d };
+  }, [barWidth]);
+
+  // Vòng tròn Active tím sáng di chuyển đồng bộ 100% cùng tâm notch
+  const circleAnimatedStyle = useAnimatedStyle(() => ({
+    transform: [{ translateX: notchCenterX.value - CIRCLE_RADIUS }],
   }));
 
-  const rippleAnimatedStyle = useAnimatedStyle(() => ({
-    transform: [
-      { translateX: rippleX.value },
-      { scale: rippleScale.value },
-    ],
-    opacity: rippleOpacity.value,
-  }));
-
+  // Animated styles cho từng icon
   const icon0Style = useAnimatedStyle(() => ({
-    transform: [{ translateY: icon0Y.value }, { scale: icon0Scale.value }],
+    transform: [{ translateY: icon0Y.value }],
   }));
   const icon1Style = useAnimatedStyle(() => ({
-    transform: [{ translateY: icon1Y.value }, { scale: icon1Scale.value }],
+    transform: [{ translateY: icon1Y.value }],
   }));
   const icon2Style = useAnimatedStyle(() => ({
-    transform: [{ translateY: icon2Y.value }, { scale: icon2Scale.value }],
+    transform: [{ translateY: icon2Y.value }],
   }));
   const icon3Style = useAnimatedStyle(() => ({
-    transform: [{ translateY: icon3Y.value }, { scale: icon3Scale.value }],
+    transform: [{ translateY: icon3Y.value }],
   }));
   const icon4Style = useAnimatedStyle(() => ({
-    transform: [{ translateY: icon4Y.value }, { scale: icon4Scale.value }],
+    transform: [{ translateY: icon4Y.value }],
   }));
 
   const getAnimatedIconStyle = (idx: number) => {
@@ -260,38 +237,44 @@ export const LiquidNavBar: React.FC<LiquidNavBarProps> = ({
     }
   };
 
-  const bottomPadding = insets.bottom > 0 ? insets.bottom - 4 : 0;
+  const bottomOffset = Math.max(16, insets.bottom > 0 ? insets.bottom + 4 : 16);
 
   return (
     <View
-      style={[
-        styles.navBarContainer,
-        {
-          height: BAR_HEIGHT + bottomPadding,
-          paddingBottom: bottomPadding,
-        },
-      ]}
+      style={[styles.floatingWrapper, { bottom: bottomOffset }]}
       onLayout={(e) => setBarWidth(e.nativeEvent.layout.width)}
     >
-      {/* 1. Gợn sóng nước lan rộng (Ripple Ring) */}
+      {/* 1. Mặt phẳng SVG có vết lõm chữ U trượt mượt mà */}
+      <Svg
+        width={barWidth}
+        height={BAR_HEIGHT}
+        style={StyleSheet.absoluteFill}
+      >
+        <AnimatedPath
+          animatedProps={animatedPathProps}
+          fill="#12141F"
+        />
+        <AnimatedPath
+          animatedProps={animatedStrokeProps}
+          stroke="rgba(255, 255, 255, 0.07)"
+          strokeWidth={1}
+          fill="none"
+        />
+      </Svg>
+
+      {/* 2. Vòng tròn Active nổi lên trong lòng vết lõm */}
       <Animated.View
-        style={[styles.rippleRing, rippleAnimatedStyle]}
+        style={[styles.activeCircle, circleAnimatedStyle]}
         pointerEvents="none"
       />
 
-      {/* 2. Khối Giọt nước ánh sáng (Liquid Droplet) */}
-      <Animated.View
-        style={[styles.liquidDroplet, dropletAnimatedStyle]}
-        pointerEvents="none"
-      />
-
-      {/* 3. Lớp 5 Tabs ngang hàng phẳng lì */}
-      <View style={styles.tabsRow}>
+      {/* 3. Lưới 5 Icons điều hướng */}
+      <View style={[styles.tabsRow, { paddingHorizontal: SIDE_PADDING }]}>
         {/* Tab 0: Tổng quan */}
         <Pressable
           style={styles.tabItem}
           onPress={() => handlePressTab(0)}
-          hitSlop={{ top: 8, bottom: 8 }}
+          hitSlop={{ top: 12, bottom: 12 }}
         >
           <Animated.View style={getAnimatedIconStyle(0)}>
             <LayoutDashboard
@@ -305,7 +288,7 @@ export const LiquidNavBar: React.FC<LiquidNavBarProps> = ({
         <Pressable
           style={styles.tabItem}
           onPress={() => handlePressTab(1)}
-          hitSlop={{ top: 8, bottom: 8 }}
+          hitSlop={{ top: 12, bottom: 12 }}
         >
           <Animated.View style={getAnimatedIconStyle(1)}>
             <Wallet
@@ -315,16 +298,16 @@ export const LiquidNavBar: React.FC<LiquidNavBarProps> = ({
           </Animated.View>
         </Pressable>
 
-        {/* Tab 2: Nút Nhập Nhanh (+) phẳng ngang bằng mặt nước */}
+        {/* Tab 2: Nút Nhập Nhanh (+) */}
         <Pressable
           style={styles.tabItem}
           onPress={() => handlePressTab(2)}
-          hitSlop={{ top: 8, bottom: 8 }}
+          hitSlop={{ top: 12, bottom: 12 }}
         >
           <Animated.View style={getAnimatedIconStyle(2)}>
             <Plus
               size={26}
-              color={activeIndex === 2 ? '#FFFFFF' : '#94A3B8'}
+              color={activeIndex === 2 ? '#FFFFFF' : '#64748B'}
               strokeWidth={2.6}
             />
           </Animated.View>
@@ -334,7 +317,7 @@ export const LiquidNavBar: React.FC<LiquidNavBarProps> = ({
         <Pressable
           style={styles.tabItem}
           onPress={() => handlePressTab(3)}
-          hitSlop={{ top: 8, bottom: 8 }}
+          hitSlop={{ top: 12, bottom: 12 }}
         >
           <Animated.View style={getAnimatedIconStyle(3)}>
             <ReceiptText
@@ -348,7 +331,7 @@ export const LiquidNavBar: React.FC<LiquidNavBarProps> = ({
         <Pressable
           style={styles.tabItem}
           onPress={() => handlePressTab(4)}
-          hitSlop={{ top: 8, bottom: 8 }}
+          hitSlop={{ top: 12, bottom: 12 }}
         >
           <Animated.View style={getAnimatedIconStyle(4)}>
             <Settings
@@ -363,14 +346,45 @@ export const LiquidNavBar: React.FC<LiquidNavBarProps> = ({
 };
 
 const styles = StyleSheet.create({
-  navBarContainer: {
+  floatingWrapper: {
+    position: 'absolute',
+    left: 16,
+    right: 16,
     height: BAR_HEIGHT,
-    backgroundColor: '#12141F',
-    borderTopWidth: 1,
-    borderTopColor: 'rgba(255, 255, 255, 0.06)',
-    position: 'relative',
-    overflow: 'visible', // Cho phép giọt nước nảy vòng cung lên trên mặt phẳng nước
-    justifyContent: 'center',
+    zIndex: 100,
+    overflow: 'visible', // Cho phép vòng tròn nhô lên khỏi mép trên của navbar (-18px)
+    ...Platform.select({
+      ios: {
+        shadowColor: '#000000',
+        shadowOffset: { width: 0, height: 8 },
+        shadowOpacity: 0.35,
+        shadowRadius: 16,
+      },
+      android: {
+        elevation: 10,
+      },
+    }),
+  },
+  activeCircle: {
+    position: 'absolute',
+    top: -18,
+    left: 0,
+    width: CIRCLE_SIZE,
+    height: CIRCLE_SIZE,
+    borderRadius: CIRCLE_RADIUS,
+    backgroundColor: '#8B5CF6',
+    zIndex: 5,
+    ...Platform.select({
+      ios: {
+        shadowColor: '#8B5CF6',
+        shadowOffset: { width: 0, height: 6 },
+        shadowOpacity: 0.45,
+        shadowRadius: 10,
+      },
+      android: {
+        elevation: 8,
+      },
+    }),
   },
   tabsRow: {
     flexDirection: 'row',
@@ -378,45 +392,12 @@ const styles = StyleSheet.create({
     width: '100%',
     alignItems: 'center',
     justifyContent: 'space-between',
-    zIndex: 5,
+    zIndex: 10,
   },
   tabItem: {
     flex: 1,
     height: BAR_HEIGHT,
     justifyContent: 'center',
     alignItems: 'center',
-  },
-  liquidDroplet: {
-    position: 'absolute',
-    top: (BAR_HEIGHT - DROPLET_SIZE) / 2, // 12px
-    left: 0,
-    width: DROPLET_SIZE,
-    height: DROPLET_SIZE,
-    borderRadius: DROPLET_SIZE / 2,
-    backgroundColor: '#8B5CF6',
-    zIndex: 2,
-    // Hiệu ứng phát sáng tím điện tử (Glow)
-    ...Platform.select({
-      ios: {
-        shadowColor: '#A855F7',
-        shadowOpacity: 0.55,
-        shadowRadius: 10,
-        shadowOffset: { width: 0, height: 2 },
-      },
-      android: {
-        elevation: 8,
-      },
-    }),
-  },
-  rippleRing: {
-    position: 'absolute',
-    top: (BAR_HEIGHT - DROPLET_SIZE) / 2,
-    left: 0,
-    width: DROPLET_SIZE,
-    height: DROPLET_SIZE,
-    borderRadius: DROPLET_SIZE / 2,
-    borderWidth: 1.5,
-    borderColor: 'rgba(168, 85, 247, 0.6)',
-    zIndex: 1,
   },
 });
