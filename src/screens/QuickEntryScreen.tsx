@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   View,
   Text,
@@ -7,640 +7,885 @@ import {
   ScrollView,
   TextInput,
   Alert,
+  Pressable,
+  Keyboard,
+  KeyboardAvoidingView,
+  Platform,
 } from 'react-native';
+import Animated, {
+  useSharedValue,
+  useAnimatedStyle,
+  withRepeat,
+  withSequence,
+  withTiming,
+} from 'react-native-reanimated';
+import * as Haptics from 'expo-haptics';
 import {
-  CloudCheck,
-  CloudUpload,
-  CloudOff,
-  Banknote,
-  Landmark,
-  PiggyBank,
+  Calendar,
+  ChevronLeft,
+  ChevronRight,
+  Wallet as WalletIcon,
+  AlignLeft,
   Check,
-  RotateCcw,
+  ChevronDown,
 } from 'lucide-react-native';
-import { CATEGORIES, WALLETS, TransactionType } from '../types';
+import { CATEGORIES, TransactionType, Wallet } from '../types';
 import { storageService } from '../services/storage';
 import { syncService } from '../services/sync';
+import { CategoryIcon } from '../components/CategoryIcon';
+import { WalletLogo } from '../components/WalletLogo';
+import { CalculatorNumpad } from '../components/CalculatorNumpad';
+import { WalletSelectModal } from '../components/WalletSelectModal';
+import { CategorySelectModal } from '../components/CategorySelectModal';
+import {
+  evaluateExpression,
+  formatExpressionWithCommas,
+  hasPendingOperator,
+  formatVietnameseDate,
+} from '../utils/calculator';
 import { formatVND } from '../utils/format';
-import { CategoryIcon, getCategoryConfig } from '../components/CategoryIcon';
-import { Numpad } from '../components/Numpad';
+import { colors } from '../theme/colors';
+
+export interface QuickPreset {
+  category?: string;
+  note?: string;
+  type?: TransactionType;
+}
 
 interface QuickEntryScreenProps {
-  onTransactionAdded?: () => void;
+  initialPreset?: QuickPreset | null;
+  onTransactionSaved?: () => void;
   onNavigateToSettings?: () => void;
 }
 
+const triggerHaptic = () => {
+  try {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+  } catch {
+    // Ignore on unsupported devices
+  }
+};
+
 export const QuickEntryScreen: React.FC<QuickEntryScreenProps> = ({
-  onTransactionAdded,
-  onNavigateToSettings,
+  initialPreset,
+  onTransactionSaved,
 }) => {
-  // Trạng thái nhập liệu
-  const [amountStr, setAmountStr] = useState<string>('0');
+  const [expression, setExpression] = useState<string>('0');
   const [type, setType] = useState<TransactionType>('EXPENSE');
   const [category, setCategory] = useState<string>(CATEGORIES[0]);
-  const [wallet, setWallet] = useState<string>(WALLETS[0]);
+  const [selectedWallet, setSelectedWallet] = useState<Wallet | null>(null);
+  const [wallets, setWallets] = useState<Wallet[]>([]);
   const [note, setNote] = useState<string>('');
+  const [selectedDate, setSelectedDate] = useState<Date>(new Date());
 
-  // Trạng thái thống kê & sync
-  const [todayExpense, setTodayExpense] = useState<number>(0);
-  const [monthExpense, setMonthExpense] = useState<number>(0);
-  const [pendingSyncCount, setPendingSyncCount] = useState<number>(0);
-  const [hasConfiguredUrl, setHasConfiguredUrl] = useState<boolean>(false);
-  const [saveSuccessMessage, setSaveSuccessMessage] = useState<string | null>(null);
+  const [isAmountFocused, setIsAmountFocused] = useState<boolean>(false);
+  const [isNoteFocused, setIsNoteFocused] = useState<boolean>(false);
+  const [isWalletModalOpen, setIsWalletModalOpen] = useState<boolean>(false);
+  const [isCategoryModalOpen, setIsCategoryModalOpen] = useState<boolean>(false);
 
-  // Tính toán số liệu tổng hợp trong ngày và trong tháng
-  const refreshStats = useCallback(async () => {
-    try {
-      const [transactions, settings] = await Promise.all([
-        storageService.getTransactions(),
-        storageService.getSettings(),
-      ]);
+  const noteInputRef = useRef<any>(null);
+  const cursorOpacity = useSharedValue(0);
 
-      setHasConfiguredUrl(!!settings.googleScriptUrl?.trim());
-
-      const now = new Date();
-      const currentYear = now.getFullYear();
-      const currentMonth = now.getMonth();
-      const currentDay = now.getDate();
-
-      let dayTotal = 0;
-      let monthTotal = 0;
-      let pendingCount = 0;
-
-      for (const t of transactions) {
-        if (!t.synced) {
-          pendingCount++;
-        }
-
-        if (t.type === 'EXPENSE') {
-          const tDate = new Date(t.date);
-          if (
-            tDate.getFullYear() === currentYear &&
-            tDate.getMonth() === currentMonth
-          ) {
-            monthTotal += t.amount;
-            if (tDate.getDate() === currentDay) {
-              dayTotal += t.amount;
-            }
-          }
-        }
-      }
-
-      setTodayExpense(dayTotal);
-      setMonthExpense(monthTotal);
-      setPendingSyncCount(pendingCount);
-    } catch (error) {
-      console.error('Lỗi khi tải thống kê:', error);
+  // Hiệu ứng con trỏ nhấp nháy khi focus vào ô số tiền
+  useEffect(() => {
+    if (isAmountFocused && !isNoteFocused) {
+      cursorOpacity.value = withRepeat(
+        withSequence(
+          withTiming(0, { duration: 450 }),
+          withTiming(1, { duration: 450 })
+        ),
+        -1,
+        true
+      );
+    } else {
+      cursorOpacity.value = 0;
     }
+  }, [isAmountFocused, isNoteFocused]);
+
+  const cursorAnimatedStyle = useAnimatedStyle(() => ({
+    opacity: cursorOpacity.value,
+  }));
+
+  // Load danh sách ví
+  useEffect(() => {
+    storageService.getWallets().then((list) => {
+      setWallets(list);
+      if (list.length > 0 && !selectedWallet) {
+        setSelectedWallet(list[0]);
+      }
+    });
   }, []);
 
+  // Áp dụng preset nếu có
   useEffect(() => {
-    refreshStats();
-  }, [refreshStats]);
+    if (initialPreset) {
+      if (initialPreset.category) setCategory(initialPreset.category);
+      if (initialPreset.note !== undefined) setNote(initialPreset.note);
+      if (initialPreset.type) setType(initialPreset.type);
+    }
+  }, [initialPreset]);
 
-  // Xử lý phím Numpad
+  // Numpad key handlers
   const handleDigit = (digit: string) => {
-    setAmountStr((prev) => {
-      if (prev === '0') {
-        return digit === '000' ? '0' : digit;
+    setExpression((prev) => {
+      if (prev === '0' && digit !== '.' && digit !== '000') {
+        return digit;
       }
-      if (prev.length >= 12) return prev; // Giới hạn độ dài số tiền
+      if (prev === '0' && digit === '000') {
+        return '0';
+      }
+      if (digit === '.') {
+        const parts = prev.split(/[+\-×÷*/]/);
+        const lastPart = parts[parts.length - 1];
+        if (lastPart.includes('.')) return prev;
+        if (lastPart === '' || lastPart === ' ') return prev + '0.';
+        return prev + '.';
+      }
+      if (digit === '000') {
+        const parts = prev.split(/[+\-×÷*/]/);
+        const lastPart = parts[parts.length - 1].trim();
+        if (lastPart === '' || lastPart === '0') return prev;
+        return prev + '000';
+      }
+      if (prev.length >= 30) return prev;
       return prev + digit;
     });
   };
 
+  const handleOperator = (op: string) => {
+    setExpression((prev) => {
+      const trimmed = prev.trim();
+      if (/[+\-×÷*/]$/.test(trimmed)) {
+        return trimmed.slice(0, -1).trim() + ' ' + op + ' ';
+      }
+      return trimmed + ' ' + op + ' ';
+    });
+  };
+
   const handleBackspace = () => {
-    setAmountStr((prev) => {
-      if (prev.length <= 1) return '0';
-      return prev.slice(0, -1);
+    setExpression((prev) => {
+      const trimmed = prev.trim();
+      if (trimmed.length <= 1 || trimmed === '0') return '0';
+      if (/[+\-×÷*/]$/.test(trimmed)) {
+        return trimmed.slice(0, -1).trim();
+      }
+      return prev.slice(0, -1).trim() || '0';
     });
   };
 
   const handleClear = () => {
-    setAmountStr('0');
+    setExpression('0');
+  };
+
+  const handleEqual = () => {
+    const result = evaluateExpression(expression);
+    if (result !== null) {
+      setExpression(result.toString());
+    }
+  };
+
+  const handleChip = (addVal: number) => {
+    const currentVal = evaluateExpression(expression) || 0;
+    const newVal = currentVal + addVal;
+    setExpression(newVal.toString());
+  };
+
+  // Chọn ngày
+  const handlePrevDay = () => {
+    triggerHaptic();
+    setSelectedDate((prev) => {
+      const d = new Date(prev);
+      d.setDate(d.getDate() - 1);
+      return d;
+    });
+  };
+
+  const handleNextDay = () => {
+    triggerHaptic();
+    setSelectedDate((prev) => {
+      const d = new Date(prev);
+      d.setDate(d.getDate() + 1);
+      return d;
+    });
   };
 
   // Lưu giao dịch
-  const handleSaveTransaction = async () => {
-    const amountNum = parseInt(amountStr, 10);
-    if (!amountNum || amountNum <= 0) {
+  const handleSave = async () => {
+    const evaluatedAmount = evaluateExpression(expression);
+    if (!evaluatedAmount || evaluatedAmount <= 0) {
       Alert.alert('Số tiền chưa hợp lệ', 'Vui lòng nhập số tiền lớn hơn 0 VND');
+      return;
+    }
+
+    if (!selectedWallet) {
+      Alert.alert('Chưa chọn ví', 'Vui lòng chọn ví để ghi nhận giao dịch');
       return;
     }
 
     try {
       const now = new Date();
+      const transactionDate = new Date(selectedDate);
+      transactionDate.setHours(now.getHours(), now.getMinutes(), now.getSeconds());
+
       await storageService.addTransaction({
-        date: now.toISOString(),
-        amount: amountNum,
+        date: transactionDate.toISOString(),
+        amount: evaluatedAmount,
         type,
-        category,
-        wallet,
+        category: type === 'TRANSFER' ? 'Chuyển khoản' : category,
+        wallet: selectedWallet.name,
         note: note.trim() || undefined,
       });
 
-      // Reset form
-      setAmountStr('0');
-      setNote('');
-
-      // Thông báo phản hồi UI ngay lập tức
-      setSaveSuccessMessage(`Đã ghi: ${formatVND(amountNum)} (${category})`);
-      setTimeout(() => setSaveSuccessMessage(null), 3000);
-
-      // Cập nhật lại số liệu
-      await refreshStats();
-      onTransactionAdded?.();
-
-      // Kích hoạt đồng bộ ngầm lên Google Sheet nếu có mạng và cấu hình
-      syncService.syncPendingTransactions().then((res) => {
-        if (res.success && res.count > 0) {
-          refreshStats();
-        }
+      // Cập nhật số dư ví
+      let newBalance = selectedWallet.balance || 0;
+      if (type === 'EXPENSE' || type === 'TRANSFER') {
+        newBalance -= evaluatedAmount;
+      } else if (type === 'INCOME') {
+        newBalance += evaluatedAmount;
+      }
+      await storageService.updateWallet({
+        ...selectedWallet,
+        balance: newBalance,
       });
-    } catch (error) {
-      Alert.alert('Lỗi lưu giao dịch', 'Không thể lưu vào bộ nhớ máy.');
+
+      // Reset form
+      setExpression('0');
+      setNote('');
+      setIsAmountFocused(false);
+
+      triggerHaptic();
+      onTransactionSaved?.();
+
+      // Đồng bộ ngầm
+      syncService.syncPendingTransactions();
+    } catch {
+      Alert.alert('Lỗi', 'Không thể lưu giao dịch vào máy');
     }
   };
 
-  const currentAmount = parseInt(amountStr, 10) || 0;
-  const isExpense = type === 'EXPENSE';
-  const themeAccentColor = isExpense ? '#F43F5E' : '#10B981';
-
-  const getWalletIcon = (w: string) => {
-    switch (w) {
-      case 'Tiền mặt':
-        return Banknote;
-      case 'Ngân hàng':
-        return Landmark;
-      case 'Tiết kiệm':
-      default:
-        return PiggyBank;
-    }
-  };
+  const evaluatedAmount = evaluateExpression(expression);
+  const pendingOperator = hasPendingOperator(expression);
 
   return (
-    <View style={styles.container}>
-      {/* 1. Header: Thống kê chi tiêu & Trạng thái Sync */}
-      <View style={styles.header}>
-        <View style={styles.headerStatsContainer}>
-          <Text style={styles.headerSubTitle}>Hôm nay / Tháng này</Text>
-          <View style={styles.statsRow}>
-            <Text style={styles.statDayText}>{formatVND(todayExpense)}</Text>
-            <Text style={styles.statSeparator}>•</Text>
-            <Text style={styles.statMonthText}>{formatVND(monthExpense)}</Text>
+    <KeyboardAvoidingView
+      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+      style={styles.container}
+    >
+      <ScrollView
+        style={styles.scrollView}
+        contentContainerStyle={styles.contentContainer}
+        keyboardShouldPersistTaps="handled"
+        showsVerticalScrollIndicator={false}
+      >
+        {/* Header màn hình đồng bộ với Quản lý ví & Lịch sử */}
+        <View style={styles.topHeader}>
+          <View style={styles.topHeaderTitleCol}>
+            <Text style={styles.pageTitle} numberOfLines={1}>
+              Thêm giao dịch
+            </Text>
+            <Text style={styles.pageSubTitle} numberOfLines={1}>
+              Chi tiêu • Thu nhập • Chuyển khoản
+            </Text>
           </View>
         </View>
 
-        {/* Sync Status Badge */}
-        <TouchableOpacity
-          style={[
-            styles.syncBadge,
-            !hasConfiguredUrl
-              ? styles.syncBadgeDisabled
-              : pendingSyncCount > 0
-              ? styles.syncBadgePending
-              : styles.syncBadgeSynced,
-          ]}
-          onPress={onNavigateToSettings}
-          activeOpacity={0.7}
-        >
-          {!hasConfiguredUrl ? (
-            <>
-              <CloudOff size={15} color="#94A3B8" />
-              <Text style={styles.syncTextDisabled}>Chưa cấu hình</Text>
-            </>
-          ) : pendingSyncCount > 0 ? (
-            <>
-              <CloudUpload size={15} color="#F59E0B" />
-              <Text style={styles.syncTextPending}>{pendingSyncCount} chờ sync</Text>
-            </>
-          ) : (
-            <>
-              <CloudCheck size={15} color="#10B981" />
-              <Text style={styles.syncTextSynced}>Đã đồng bộ</Text>
-            </>
-          )}
-        </TouchableOpacity>
-      </View>
-
-      {/* Thông báo lưu thành công */}
-      {saveSuccessMessage && (
-        <View style={styles.toastBanner}>
-          <Check size={16} color="#10B981" />
-          <Text style={styles.toastText}>{saveSuccessMessage}</Text>
-        </View>
-      )}
-
-      {/* 2. Display: Số tiền to & Bộ chọn Thu/Chi */}
-      <View style={styles.displayCard}>
-        <View style={styles.typeSelector}>
+        {/* 1. Segmented Tabs: [Khoản chi] | [Khoản thu] | [Chuyển khoản] */}
+        <View style={styles.segmentedContainer}>
           <TouchableOpacity
             style={[
-              styles.typeTab,
-              isExpense && { backgroundColor: 'rgba(244, 63, 94, 0.2)', borderColor: '#F43F5E' },
+              styles.segmentTab,
+              type === 'EXPENSE' && styles.segmentTabExpenseActive,
             ]}
-            onPress={() => setType('EXPENSE')}
+            onPress={() => {
+              triggerHaptic();
+              setType('EXPENSE');
+              setIsAmountFocused(false);
+            }}
             activeOpacity={0.8}
           >
             <Text
               style={[
-                styles.typeTabText,
-                isExpense ? { color: '#F43F5E', fontWeight: '700' } : { color: '#94A3B8' },
+                styles.segmentText,
+                type === 'EXPENSE' && styles.segmentTextExpenseActive,
               ]}
             >
-              Chi tiêu
+              Khoản chi
             </Text>
           </TouchableOpacity>
 
           <TouchableOpacity
             style={[
-              styles.typeTab,
-              !isExpense && { backgroundColor: 'rgba(16, 185, 129, 0.2)', borderColor: '#10B981' },
+              styles.segmentTab,
+              type === 'INCOME' && styles.segmentTabIncomeActive,
             ]}
-            onPress={() => setType('INCOME')}
+            onPress={() => {
+              triggerHaptic();
+              setType('INCOME');
+              setIsAmountFocused(false);
+            }}
             activeOpacity={0.8}
           >
             <Text
               style={[
-                styles.typeTabText,
-                !isExpense ? { color: '#10B981', fontWeight: '700' } : { color: '#94A3B8' },
+                styles.segmentText,
+                type === 'INCOME' && styles.segmentTextIncomeActive,
               ]}
             >
-              Thu nhập
+              Khoản thu
+            </Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={[
+              styles.segmentTab,
+              type === 'TRANSFER' && styles.segmentTabTransferActive,
+            ]}
+            onPress={() => {
+              triggerHaptic();
+              setType('TRANSFER');
+              setIsAmountFocused(false);
+            }}
+            activeOpacity={0.8}
+          >
+            <Text
+              style={[
+                styles.segmentText,
+                type === 'TRANSFER' && styles.segmentTextTransferActive,
+              ]}
+            >
+              Chuyển khoản
             </Text>
           </TouchableOpacity>
         </View>
 
-        <View style={styles.amountRow}>
-          <Text
-            style={[
-              styles.amountText,
-              { color: isExpense ? '#F43F5E' : '#10B981' },
-            ]}
-            numberOfLines={1}
-            adjustsFontSizeToFit
+        {/* 2. Form Box chính */}
+        <View style={styles.formCard}>
+          {/* Row 1: Chọn Ví */}
+          <TouchableOpacity
+            style={styles.formRow}
+            onPress={() => {
+              Keyboard.dismiss();
+              setIsAmountFocused(false);
+              setIsWalletModalOpen(true);
+            }}
+            activeOpacity={0.7}
           >
-            {formatVND(currentAmount)}
-          </Text>
+            <View style={styles.rowLeft}>
+              <View style={styles.rowIconContainer}>
+                {selectedWallet ? (
+                  <WalletLogo
+                    logoId={selectedWallet.logoId || selectedWallet.icon}
+                    icon={selectedWallet.icon}
+                    name={selectedWallet.name}
+                    type={selectedWallet.type}
+                    size={22}
+                  />
+                ) : (
+                  <WalletIcon size={22} color="#94A3B8" />
+                )}
+              </View>
+              <View style={styles.rowTextCol}>
+                <Text style={styles.rowLabel}>Tài khoản / Ví</Text>
+                <Text style={styles.rowMainText}>
+                  {selectedWallet ? selectedWallet.name : 'Chọn ví'}
+                </Text>
+              </View>
+            </View>
 
-          {currentAmount > 0 && (
-            <TouchableOpacity
-              style={styles.clearMiniBtn}
-              onPress={handleClear}
-              activeOpacity={0.7}
-            >
-              <RotateCcw size={16} color="#64748B" />
-            </TouchableOpacity>
-          )}
-        </View>
-      </View>
+            <View style={styles.rowRight}>
+              {selectedWallet?.balance !== undefined && (
+                <Text style={styles.walletBalanceText}>
+                  {formatVND(selectedWallet.balance)}
+                </Text>
+              )}
+              <ChevronRight size={18} color="#64748B" />
+            </View>
+          </TouchableOpacity>
 
-      {/* 3. Horizontal Chips: Danh mục & Ví */}
-      <View style={styles.chipsSection}>
-        {/* Danh mục */}
-        <ScrollView
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          contentContainerStyle={styles.chipsScroll}
-        >
-          {CATEGORIES.map((cat) => {
-            const isSelected = category === cat;
-            const config = getCategoryConfig(cat);
-            return (
-              <TouchableOpacity
-                key={cat}
+          <View style={styles.divider} />
+
+          {/* Row 2: Ô Số tiền (Active Focus) */}
+          <Pressable
+            style={styles.amountRow}
+            onPress={() => {
+              Keyboard.dismiss();
+              setIsAmountFocused(true);
+              setIsNoteFocused(false);
+            }}
+          >
+            <View style={[styles.vndBadge, isAmountFocused && styles.vndBadgeFocused]}>
+              <Text style={[styles.vndBadgeText, isAmountFocused && styles.vndBadgeTextFocused]}>
+                VND
+              </Text>
+            </View>
+
+            <View style={styles.amountDisplay}>
+              <View style={styles.amountTextContainer}>
+                <Text
+                  style={[
+                    styles.amountText,
+                    isAmountFocused && { color: '#A855F7' },
+                    type === 'EXPENSE' && !isAmountFocused && { color: '#F43F5E' },
+                    type === 'INCOME' && !isAmountFocused && { color: '#34D399' },
+                    type === 'TRANSFER' && !isAmountFocused && { color: '#8B5CF6' },
+                  ]}
+                  numberOfLines={1}
+                  adjustsFontSizeToFit
+                >
+                  {formatExpressionWithCommas(expression)}
+                </Text>
+                {isAmountFocused && !isNoteFocused && (
+                  <Animated.View style={[styles.blinkingCursor, cursorAnimatedStyle]} />
+                )}
+              </View>
+
+              <View
                 style={[
-                  styles.categoryChip,
-                  isSelected && {
-                    backgroundColor: config.bg,
-                    borderColor: config.color,
-                  },
+                  styles.amountActiveUnderline,
+                  isAmountFocused && styles.amountActiveUnderlineFocused,
+                  type === 'EXPENSE' && !isAmountFocused && { backgroundColor: '#F43F5E' },
+                  type === 'INCOME' && !isAmountFocused && { backgroundColor: '#34D399' },
+                  type === 'TRANSFER' && !isAmountFocused && { backgroundColor: '#8B5CF6' },
                 ]}
-                onPress={() => setCategory(cat)}
-                activeOpacity={0.7}
-              >
+              />
+            </View>
+          </Pressable>
+
+          <View style={styles.divider} />
+
+          {/* Row 3: Chọn Nhóm (Category) */}
+          <TouchableOpacity
+            style={styles.formRow}
+            onPress={() => {
+              Keyboard.dismiss();
+              setIsAmountFocused(false);
+              setIsCategoryModalOpen(true);
+            }}
+            activeOpacity={0.7}
+          >
+            <View style={styles.rowLeft}>
+              <View style={styles.rowIconContainer}>
                 <CategoryIcon
-                  category={cat}
-                  size={14}
-                  containerSize={24}
-                  style={{ marginRight: 6 }}
+                  category={type === 'TRANSFER' ? 'Khác' : category}
+                  size={20}
+                  containerSize={36}
                 />
-                <Text
-                  style={[
-                    styles.chipText,
-                    isSelected && { color: config.color, fontWeight: '700' },
-                  ]}
-                >
-                  {cat}
+              </View>
+              <View style={styles.rowTextCol}>
+                <Text style={styles.rowLabel}>Hạng mục</Text>
+                <Text style={styles.rowMainText}>
+                  {type === 'TRANSFER' ? 'Chuyển khoản / Trả nợ' : category || 'Chọn nhóm'}
                 </Text>
-              </TouchableOpacity>
-            );
-          })}
-        </ScrollView>
+              </View>
+            </View>
 
-        {/* Ví / Nguồn tiền */}
-        <ScrollView
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          contentContainerStyle={[styles.chipsScroll, { marginTop: 6 }]}
-        >
-          {WALLETS.map((w) => {
-            const isSelected = wallet === w;
-            const WalletIconComponent = getWalletIcon(w);
-            return (
+            <ChevronRight size={18} color="#64748B" />
+          </TouchableOpacity>
+
+          <View style={styles.divider} />
+
+          {/* Row 4: Ghi chú */}
+          <View style={styles.noteRow}>
+            <View style={styles.rowIconContainer}>
+              <AlignLeft size={22} color="#94A3B8" />
+            </View>
+            <TextInput
+              ref={noteInputRef}
+              style={styles.noteTextInput}
+              placeholder="Thêm ghi chú (không bắt buộc)..."
+              placeholderTextColor="#64748B"
+              value={note}
+              onChangeText={setNote}
+              maxLength={80}
+              onFocus={() => {
+                setIsAmountFocused(false);
+                setIsNoteFocused(true);
+              }}
+              onBlur={() => {
+                setIsNoteFocused(false);
+              }}
+              returnKeyType="done"
+              onSubmitEditing={() => Keyboard.dismiss()}
+            />
+          </View>
+
+          <View style={styles.divider} />
+
+          {/* Row 5: Chọn Ngày */}
+          <View style={styles.dateRow}>
+            <View style={styles.rowLeft}>
+              <View style={styles.rowIconContainer}>
+                <Calendar size={22} color="#94A3B8" />
+              </View>
+              <View style={styles.rowTextCol}>
+                <Text style={styles.rowLabel}>Ngày ghi nhận</Text>
+                <Text style={styles.rowMainText}>
+                  {formatVietnameseDate(selectedDate)}
+                </Text>
+              </View>
+            </View>
+
+            <View style={styles.dateSelectorPill}>
               <TouchableOpacity
-                key={w}
-                style={[
-                  styles.walletChip,
-                  isSelected && styles.walletChipSelected,
-                ]}
-                onPress={() => setWallet(w)}
+                style={styles.dateArrowBtn}
+                onPress={handlePrevDay}
                 activeOpacity={0.7}
               >
-                <WalletIconComponent
-                  size={15}
-                  color={isSelected ? '#38BDF8' : '#64748B'}
-                  style={{ marginRight: 6 }}
-                />
-                <Text
-                  style={[
-                    styles.chipText,
-                    isSelected && { color: '#38BDF8', fontWeight: '700' },
-                  ]}
-                >
-                  {w}
-                </Text>
+                <ChevronLeft size={18} color="#34D399" />
               </TouchableOpacity>
-            );
-          })}
-        </ScrollView>
-      </View>
 
-      {/* Ghi chú ngắn gọn */}
-      <View style={styles.noteContainer}>
-        <TextInput
-          style={styles.noteInput}
-          placeholder="Thêm ghi chú (Cơm trưa, đổ xăng, cafe...)"
-          placeholderTextColor="#64748B"
-          value={note}
-          onChangeText={setNote}
-          maxLength={60}
-          returnKeyType="done"
-        />
-      </View>
+              <TouchableOpacity
+                style={styles.dateArrowBtn}
+                onPress={handleNextDay}
+                activeOpacity={0.7}
+              >
+                <ChevronRight size={18} color="#34D399" />
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
 
-      {/* 4. Virtual Numpad */}
-      <View style={styles.numpadWrapper}>
-        <Numpad
-          onPressDigit={handleDigit}
-          onPressBackspace={handleBackspace}
-          onPressClear={handleClear}
-        />
-      </View>
+        {/* 3. Bàn phím số Numpad (Chỉ mở khi bấm vào ô Số tiền) */}
+        {isAmountFocused && !isNoteFocused && (
+          <View style={styles.numpadWrapper}>
+            <View style={styles.numpadHeaderBar}>
+              <Text style={styles.numpadHeaderTitle}>Bàn phím tính toán</Text>
+              <TouchableOpacity
+                style={styles.closeNumpadBtn}
+                onPress={() => setIsAmountFocused(false)}
+              >
+                <Text style={styles.closeNumpadText}>Thu gọn</Text>
+                <ChevronDown size={16} color="#8B5CF6" />
+              </TouchableOpacity>
+            </View>
 
-      {/* 5. Nút Lưu giao dịch To Bản tối ưu ngón cái */}
-      <View style={styles.saveActionWrapper}>
-        <TouchableOpacity
-          style={[
-            styles.saveButton,
-            { backgroundColor: themeAccentColor },
-            currentAmount === 0 && styles.saveButtonDisabled,
-          ]}
-          onPress={handleSaveTransaction}
-          disabled={currentAmount === 0}
-          activeOpacity={0.8}
-        >
-          <Text style={styles.saveButtonText}>
-            LƯU {isExpense ? 'CHI TIÊU' : 'THU NHẬP'} {currentAmount > 0 ? `• ${formatVND(currentAmount)}` : ''}
-          </Text>
-        </TouchableOpacity>
-      </View>
-    </View>
+            <CalculatorNumpad
+              expression={expression}
+              evaluatedAmount={evaluatedAmount}
+              hasPendingOperator={pendingOperator}
+              onPressDigit={handleDigit}
+              onPressOperator={handleOperator}
+              onPressBackspace={handleBackspace}
+              onPressClear={handleClear}
+              onPressEqual={handleEqual}
+              onPressChip={handleChip}
+              onSave={handleSave}
+            />
+          </View>
+        )}
+
+        {/* 4. Nút Lưu giao dịch cố định khi chưa mở bàn phím số */}
+        {!isAmountFocused && !isNoteFocused && (
+          <TouchableOpacity
+            style={styles.saveActionBtn}
+            onPress={handleSave}
+            activeOpacity={0.8}
+          >
+            <Check size={20} color="#FFFFFF" strokeWidth={2.5} style={{ marginRight: 8 }} />
+            <Text style={styles.saveActionBtnText}>Lưu giao dịch</Text>
+          </TouchableOpacity>
+        )}
+      </ScrollView>
+
+      {/* Modal Chọn Ví */}
+      <WalletSelectModal
+        visible={isWalletModalOpen}
+        wallets={wallets}
+        selectedWalletName={selectedWallet?.name || ''}
+        onClose={() => setIsWalletModalOpen(false)}
+        onSelectWallet={(w) => setSelectedWallet(w)}
+      />
+
+      {/* Modal Chọn Nhóm */}
+      <CategorySelectModal
+        visible={isCategoryModalOpen}
+        categories={CATEGORIES}
+        selectedCategory={category}
+        onClose={() => setIsCategoryModalOpen(false)}
+        onSelectCategory={(c) => setCategory(c)}
+      />
+    </KeyboardAvoidingView>
   );
 };
 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#0F172A',
-    paddingHorizontal: 12,
-    paddingTop: 8,
-    justifyContent: 'space-between',
+    backgroundColor: colors.bg,
   },
-  header: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingVertical: 8,
-    paddingHorizontal: 4,
-  },
-  headerStatsContainer: {
+  scrollView: {
     flex: 1,
   },
-  headerSubTitle: {
-    fontSize: 11,
+  contentContainer: {
+    paddingHorizontal: 16,
+    paddingTop: 12,
+    paddingBottom: 110, // Chừa khoảng trống an toàn cho thanh LiquidNavBar nổi ở đáy
+  },
+  topHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 16,
+  },
+  topHeaderTitleCol: {
+    flex: 1,
+  },
+  pageTitle: {
+    fontSize: 22,
+    fontWeight: '800',
+    color: '#FFFFFF',
+    letterSpacing: -0.3,
+  },
+  pageSubTitle: {
+    fontSize: 13,
     color: '#64748B',
-    textTransform: 'uppercase',
-    letterSpacing: 0.5,
-    fontWeight: '600',
-  },
-  statsRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
     marginTop: 2,
-  },
-  statDayText: {
-    fontSize: 16,
-    fontWeight: '700',
-    color: '#F43F5E',
-  },
-  statSeparator: {
-    marginHorizontal: 8,
-    color: '#475569',
-    fontSize: 14,
-  },
-  statMonthText: {
-    fontSize: 15,
-    fontWeight: '600',
-    color: '#CBD5E1',
-  },
-  syncBadge: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    borderRadius: 20,
-    gap: 6,
-  },
-  syncBadgeSynced: {
-    backgroundColor: 'rgba(16, 185, 129, 0.12)',
-    borderWidth: 1,
-    borderColor: 'rgba(16, 185, 129, 0.3)',
-  },
-  syncBadgePending: {
-    backgroundColor: 'rgba(245, 158, 11, 0.12)',
-    borderWidth: 1,
-    borderColor: 'rgba(245, 158, 11, 0.3)',
-  },
-  syncBadgeDisabled: {
-    backgroundColor: '#1E293B',
-    borderWidth: 1,
-    borderColor: '#334155',
-  },
-  syncTextSynced: {
-    fontSize: 12,
-    color: '#10B981',
-    fontWeight: '600',
-  },
-  syncTextPending: {
-    fontSize: 12,
-    color: '#F59E0B',
-    fontWeight: '600',
-  },
-  syncTextDisabled: {
-    fontSize: 12,
-    color: '#94A3B8',
     fontWeight: '500',
   },
-  toastBanner: {
+  segmentedContainer: {
+    flexDirection: 'row',
+    backgroundColor: '#161926',
+    borderRadius: 14,
+    padding: 4,
+    marginBottom: 16,
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.06)',
+  },
+  segmentTab: {
+    flex: 1,
+    paddingVertical: 10,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: 10,
+  },
+  segmentTabExpenseActive: {
+    backgroundColor: 'rgba(244, 63, 94, 0.22)',
+    borderWidth: 1,
+    borderColor: 'rgba(244, 63, 94, 0.55)',
+  },
+  segmentTabIncomeActive: {
+    backgroundColor: 'rgba(16, 185, 129, 0.22)',
+    borderWidth: 1,
+    borderColor: 'rgba(16, 185, 129, 0.55)',
+  },
+  segmentTabTransferActive: {
+    backgroundColor: 'rgba(139, 92, 246, 0.22)',
+    borderWidth: 1,
+    borderColor: 'rgba(139, 92, 246, 0.55)',
+  },
+  segmentText: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#94A3B8',
+  },
+  segmentTextExpenseActive: {
+    color: '#F43F5E',
+    fontWeight: '700',
+  },
+  segmentTextIncomeActive: {
+    color: '#34D399',
+    fontWeight: '700',
+  },
+  segmentTextTransferActive: {
+    color: '#A855F7',
+    fontWeight: '700',
+  },
+  formCard: {
+    backgroundColor: '#12141F',
+    borderRadius: 20,
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.07)',
+    marginBottom: 16,
+  },
+  formRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingVertical: 12,
+  },
+  rowLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flex: 1,
+  },
+  rowRight: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
-    backgroundColor: 'rgba(16, 185, 129, 0.15)',
-    borderWidth: 1,
-    borderColor: 'rgba(16, 185, 129, 0.4)',
-    paddingVertical: 6,
-    paddingHorizontal: 12,
-    borderRadius: 10,
-    marginBottom: 6,
   },
-  toastText: {
-    color: '#E2E8F0',
+  rowIconContainer: {
+    width: 36,
+    height: 36,
+    borderRadius: 10,
+    backgroundColor: 'rgba(255, 255, 255, 0.05)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: 12,
+  },
+  rowTextCol: {
+    flex: 1,
+  },
+  rowLabel: {
+    fontSize: 11,
+    color: '#64748B',
+    fontWeight: '500',
+    marginBottom: 2,
+    textTransform: 'uppercase',
+    letterSpacing: 0.3,
+  },
+  rowMainText: {
+    fontSize: 15,
+    fontWeight: '600',
+    color: '#FFFFFF',
+  },
+  walletBalanceText: {
     fontSize: 13,
     fontWeight: '500',
+    color: '#34D399',
   },
-  displayCard: {
-    backgroundColor: '#1E293B',
-    borderRadius: 20,
-    padding: 14,
-    borderWidth: 1,
-    borderColor: '#334155',
-  },
-  typeSelector: {
-    flexDirection: 'row',
-    backgroundColor: '#0F172A',
-    borderRadius: 12,
-    padding: 3,
-    gap: 4,
-  },
-  typeTab: {
-    flex: 1,
-    paddingVertical: 8,
-    borderRadius: 10,
-    alignItems: 'center',
-    borderWidth: 1,
-    borderColor: 'transparent',
-  },
-  typeTabText: {
-    fontSize: 14,
-    fontWeight: '600',
+  divider: {
+    height: 1,
+    backgroundColor: 'rgba(255, 255, 255, 0.05)',
   },
   amountRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'center',
-    marginTop: 12,
+    paddingVertical: 14,
+  },
+  vndBadge: {
+    paddingHorizontal: 8,
     paddingVertical: 4,
-    position: 'relative',
+    borderRadius: 8,
+    backgroundColor: 'rgba(255, 255, 255, 0.06)',
+    marginRight: 12,
+  },
+  vndBadgeFocused: {
+    backgroundColor: 'rgba(139, 92, 246, 0.2)',
+    borderWidth: 1,
+    borderColor: '#8B5CF6',
+  },
+  vndBadgeText: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#64748B',
+  },
+  vndBadgeTextFocused: {
+    color: '#A855F7',
+  },
+  amountDisplay: {
+    flex: 1,
+  },
+  amountTextContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
   },
   amountText: {
-    fontSize: 36,
+    fontSize: 26,
     fontWeight: '800',
+    color: '#FFFFFF',
     letterSpacing: -0.5,
-    textAlign: 'center',
   },
-  clearMiniBtn: {
-    position: 'absolute',
-    right: 4,
-    padding: 8,
-    borderRadius: 20,
-    backgroundColor: '#334155',
+  blinkingCursor: {
+    width: 2.5,
+    height: 24,
+    backgroundColor: '#8B5CF6',
+    marginLeft: 4,
+    borderRadius: 2,
   },
-  chipsSection: {
+  amountActiveUnderline: {
+    height: 2,
+    backgroundColor: 'transparent',
+    marginTop: 4,
+    borderRadius: 1,
+  },
+  amountActiveUnderlineFocused: {
+    backgroundColor: '#8B5CF6',
+  },
+  noteRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 10,
+  },
+  noteTextInput: {
+    flex: 1,
+    fontSize: 15,
+    color: '#FFFFFF',
     paddingVertical: 4,
   },
-  chipsScroll: {
-    flexDirection: 'row',
-    gap: 6,
-    paddingHorizontal: 2,
-    alignItems: 'center',
-  },
-  categoryChip: {
+  dateRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: 12,
-    paddingVertical: 7,
-    borderRadius: 20,
-    backgroundColor: '#1E293B',
-    borderWidth: 1,
-    borderColor: '#334155',
+    justifyContent: 'space-between',
+    paddingVertical: 12,
   },
-  walletChip: {
+  dateSelectorPill: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 16,
-    backgroundColor: '#1E293B',
-    borderWidth: 1,
-    borderColor: '#334155',
-  },
-  walletChipSelected: {
-    backgroundColor: 'rgba(56, 189, 248, 0.12)',
-    borderColor: '#38BDF8',
-  },
-  chipText: {
-    fontSize: 13,
-    color: '#94A3B8',
-    fontWeight: '500',
-  },
-  noteContainer: {
-    marginVertical: 4,
-  },
-  noteInput: {
-    backgroundColor: '#1E293B',
+    backgroundColor: '#161926',
     borderRadius: 12,
-    paddingHorizontal: 14,
-    paddingVertical: 9,
-    fontSize: 13,
-    color: '#F8FAFC',
     borderWidth: 1,
-    borderColor: '#334155',
+    borderColor: 'rgba(255, 255, 255, 0.08)',
+  },
+  dateArrowBtn: {
+    paddingHorizontal: 8,
+    paddingVertical: 6,
   },
   numpadWrapper: {
-    marginVertical: 4,
+    backgroundColor: '#12141F',
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.07)',
+    overflow: 'hidden',
+    marginBottom: 16,
   },
-  saveActionWrapper: {
-    paddingBottom: 8,
-  },
-  saveButton: {
-    height: 52,
-    borderRadius: 16,
-    justifyContent: 'center',
+  numpadHeaderBar: {
+    flexDirection: 'row',
     alignItems: 'center',
-    elevation: 4,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.3,
-    shadowRadius: 4,
+    justifyContent: 'space-between',
+    paddingHorizontal: 16,
+    paddingTop: 12,
+    paddingBottom: 4,
   },
-  saveButtonDisabled: {
-    opacity: 0.45,
+  numpadHeaderTitle: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#64748B',
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
   },
-  saveButtonText: {
+  closeNumpadBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 2,
+    paddingVertical: 4,
+    paddingHorizontal: 8,
+    borderRadius: 8,
+    backgroundColor: 'rgba(139, 92, 246, 0.12)',
+  },
+  closeNumpadText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#8B5CF6',
+  },
+  saveActionBtn: {
+    height: 50,
+    borderRadius: 14,
+    backgroundColor: '#8B5CF6',
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: '#8B5CF6',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.35,
+    shadowRadius: 8,
+    elevation: 6,
+    marginBottom: 16,
+  },
+  saveActionBtnText: {
     color: '#FFFFFF',
     fontSize: 16,
-    fontWeight: '800',
-    letterSpacing: 0.5,
+    fontWeight: '700',
   },
 });

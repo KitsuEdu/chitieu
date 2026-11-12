@@ -8,13 +8,12 @@ import { OverviewScreen, QuickPreset } from './src/screens/OverviewScreen';
 import { WalletsScreen } from './src/screens/WalletsScreen';
 import { HistoryScreen } from './src/screens/HistoryScreen';
 import { SettingsScreen } from './src/screens/SettingsScreen';
-import { QuickEntryModal } from './src/screens/QuickEntryModal';
+import { QuickEntryScreen } from './src/screens/QuickEntryScreen';
 import { LiquidNavBar, MainTabType } from './src/components/LiquidNavBar';
 import { colors } from './src/theme/colors';
 
 export default function App() {
   const [currentTab, setCurrentTab] = useState<MainTabType>('OVERVIEW');
-  const [isQuickEntryOpen, setIsQuickEntryOpen] = useState<boolean>(false);
   const [quickEntryPreset, setQuickEntryPreset] = useState<QuickPreset | null>(null);
   const [dataVersion, setDataVersion] = useState<number>(0);
 
@@ -24,12 +23,7 @@ export default function App() {
 
   const handleOpenQuickEntry = (preset?: QuickPreset) => {
     setQuickEntryPreset(preset || null);
-    setIsQuickEntryOpen(true);
-  };
-
-  const handleCloseQuickEntry = () => {
-    setIsQuickEntryOpen(false);
-    setQuickEntryPreset(null);
+    setCurrentTab('QUICK_ENTRY');
   };
 
   return (
@@ -57,6 +51,18 @@ export default function App() {
               />
             )}
 
+            {currentTab === 'QUICK_ENTRY' && (
+              <QuickEntryScreen
+                key={`quick-entry-${dataVersion}`}
+                initialPreset={quickEntryPreset}
+                onTransactionSaved={() => {
+                  handleDataChanged();
+                  setQuickEntryPreset(null);
+                  setCurrentTab('OVERVIEW');
+                }}
+              />
+            )}
+
             {currentTab === 'HISTORY' && (
               <HistoryScreen
                 key={`history-${dataVersion}`}
@@ -72,20 +78,11 @@ export default function App() {
             )}
           </View>
 
-          {/* Thanh Bottom Navigation: Mặt phẳng nước & Giọt nước đàn hồi (Liquid Surface & Droplet Physics) */}
+          {/* Thanh Bottom Navigation: Bouncing Ball Tab Animation (Navbar luôn ở phía dưới) */}
           <LiquidNavBar
             currentTab={currentTab}
             onSelectTab={setCurrentTab}
             onPressPlus={() => handleOpenQuickEntry()}
-            isQuickEntryOpen={isQuickEntryOpen}
-          />
-
-          {/* Modal Nhập Nhanh Bottom Sheet */}
-          <QuickEntryModal
-            visible={isQuickEntryOpen}
-            onClose={handleCloseQuickEntry}
-            onTransactionSaved={handleDataChanged}
-            initialPreset={quickEntryPreset}
           />
         </SafeAreaView>
       </SafeAreaProvider>

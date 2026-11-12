@@ -25,13 +25,12 @@ import {
   Plus,
 } from 'lucide-react-native';
 
-export type MainTabType = 'OVERVIEW' | 'WALLETS' | 'HISTORY' | 'SETTINGS';
+export type MainTabType = 'OVERVIEW' | 'WALLETS' | 'QUICK_ENTRY' | 'HISTORY' | 'SETTINGS';
 
 interface LiquidNavBarProps {
   currentTab: MainTabType;
   onSelectTab: (tab: MainTabType) => void;
-  onPressPlus: () => void;
-  isQuickEntryOpen: boolean;
+  onPressPlus?: () => void;
 }
 
 const AnimatedPath = Animated.createAnimatedComponent(Path);
@@ -60,7 +59,6 @@ export const LiquidNavBar: React.FC<LiquidNavBarProps> = ({
   currentTab,
   onSelectTab,
   onPressPlus,
-  isQuickEntryOpen,
 }) => {
   const insets = useSafeAreaInsets();
   const [barWidth, setBarWidth] = useState<number>(SCREEN_WIDTH - 32);
@@ -71,6 +69,8 @@ export const LiquidNavBar: React.FC<LiquidNavBarProps> = ({
         return 0;
       case 'WALLETS':
         return 1;
+      case 'QUICK_ENTRY':
+        return 2;
       case 'HISTORY':
         return 3;
       case 'SETTINGS':
@@ -86,7 +86,7 @@ export const LiquidNavBar: React.FC<LiquidNavBarProps> = ({
     return SIDE_PADDING + idx * tW + tW / 2;
   };
 
-  const activeIndex = isQuickEntryOpen ? 2 : getIndexFromTab(currentTab);
+  const activeIndex = getIndexFromTab(currentTab);
   const initialCenter = getCenterForIndex(activeIndex, barWidth);
   const prevIndexRef = useRef<number>(activeIndex);
   const isFirstMount = useRef<boolean>(true);
@@ -203,14 +203,13 @@ export const LiquidNavBar: React.FC<LiquidNavBarProps> = ({
   const handlePressTab = (idx: number) => {
     triggerHaptic();
 
-    if (idx === 2) {
-      onPressPlus();
-      return;
-    }
-
     let targetTab: MainTabType = 'OVERVIEW';
     if (idx === 0) targetTab = 'OVERVIEW';
     else if (idx === 1) targetTab = 'WALLETS';
+    else if (idx === 2) {
+      onPressPlus?.();
+      targetTab = 'QUICK_ENTRY';
+    }
     else if (idx === 3) targetTab = 'HISTORY';
     else if (idx === 4) targetTab = 'SETTINGS';
 
