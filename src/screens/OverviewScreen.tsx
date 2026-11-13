@@ -133,8 +133,13 @@ export const OverviewScreen: React.FC<OverviewScreenProps> = ({
 
         if (t.type === 'INCOME') {
           walletIncome.set(t.wallet, (walletIncome.get(t.wallet) || 0) + t.amount);
-        } else {
+        } else if (t.type === 'EXPENSE') {
           walletExpense.set(t.wallet, (walletExpense.get(t.wallet) || 0) + t.amount);
+        } else if (t.type === 'TRANSFER') {
+          walletExpense.set(t.wallet, (walletExpense.get(t.wallet) || 0) + t.amount);
+          if (t.toWallet) {
+            walletIncome.set(t.toWallet, (walletIncome.get(t.toWallet) || 0) + t.amount);
+          }
         }
 
         const tDate = new Date(t.date);
@@ -144,7 +149,7 @@ export const OverviewScreen: React.FC<OverviewScreenProps> = ({
         ) {
           if (t.type === 'EXPENSE') {
             mExp += t.amount;
-          } else {
+          } else if (t.type === 'INCOME') {
             mInc += t.amount;
           }
         }

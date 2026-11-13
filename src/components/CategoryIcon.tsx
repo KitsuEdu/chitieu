@@ -8,7 +8,9 @@ import {
   ShoppingBag,
   Zap,
   CircleEllipsis,
+  ArrowRightLeft,
 } from 'lucide-react-native';
+
 
 interface CategoryIconProps {
   category: string;
@@ -31,6 +33,8 @@ export const getCategoryConfig = (category: string) => {
       return { Icon: ShoppingBag, color: '#EC4899', bg: 'rgba(236, 72, 153, 0.12)' };
     case 'Tiện ích':
       return { Icon: Zap, color: '#6366F1', bg: 'rgba(99, 102, 241, 0.12)' };
+    case 'Chuyển khoản':
+      return { Icon: ArrowRightLeft, color: '#8B5CF6', bg: 'rgba(139, 92, 246, 0.15)' };
     case 'Khác':
     default:
       return { Icon: CircleEllipsis, color: '#94A3B8', bg: 'rgba(148, 163, 184, 0.1)' };

@@ -152,7 +152,7 @@ export const LiquidNavBar: React.FC<LiquidNavBarProps> = ({
       withTiming(1, { duration: 190, easing: Easing.out(Easing.back(1.2)) })
     );
 
-    triggerHaptic();
+    // Haptic tiếp đất khi bóng rơi lún đè vào mặt bar (t=460ms)
     setTimeout(() => {
       triggerHaptic();
     }, 460);
@@ -367,7 +367,7 @@ export const LiquidNavBar: React.FC<LiquidNavBarProps> = ({
         {/* Tab 0: Tổng quan */}
         <Pressable
           style={styles.tabItem}
-          onPress={() => handlePressTab(0)}
+          onPressIn={() => handlePressTab(0)}
           hitSlop={{ top: 12, bottom: 12 }}
         >
           <Animated.View style={tab0Style}>
@@ -378,7 +378,7 @@ export const LiquidNavBar: React.FC<LiquidNavBarProps> = ({
         {/* Tab 1: Ví */}
         <Pressable
           style={styles.tabItem}
-          onPress={() => handlePressTab(1)}
+          onPressIn={() => handlePressTab(1)}
           hitSlop={{ top: 12, bottom: 12 }}
         >
           <Animated.View style={tab1Style}>
@@ -389,7 +389,7 @@ export const LiquidNavBar: React.FC<LiquidNavBarProps> = ({
         {/* Tab 2: Nút Nhập Nhanh (+) */}
         <Pressable
           style={styles.tabItem}
-          onPress={() => handlePressTab(2)}
+          onPressIn={() => handlePressTab(2)}
           hitSlop={{ top: 12, bottom: 12 }}
         >
           <Animated.View style={tab2Style}>
@@ -400,7 +400,7 @@ export const LiquidNavBar: React.FC<LiquidNavBarProps> = ({
         {/* Tab 3: Lịch sử */}
         <Pressable
           style={styles.tabItem}
-          onPress={() => handlePressTab(3)}
+          onPressIn={() => handlePressTab(3)}
           hitSlop={{ top: 12, bottom: 12 }}
         >
           <Animated.View style={tab3Style}>
@@ -411,7 +411,7 @@ export const LiquidNavBar: React.FC<LiquidNavBarProps> = ({
         {/* Tab 4: Hồ sơ & Tiện ích */}
         <Pressable
           style={styles.tabItem}
-          onPress={() => handlePressTab(4)}
+          onPressIn={() => handlePressTab(4)}
           hitSlop={{ top: 12, bottom: 12 }}
         >
           <Animated.View style={tab4Style}>

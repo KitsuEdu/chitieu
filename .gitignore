@@ -41,3 +41,4 @@ yarn-error.*
 /android
 # Antigravity Kit state and local caches
 .agk/
+.claude/

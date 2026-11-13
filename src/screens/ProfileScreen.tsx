@@ -16,33 +16,132 @@ import {
   ChevronRight,
 } from 'lucide-react-native';
 import { storageService } from '../services/storage';
+import { syncService, SyncEvent } from '../services/sync';
 import { colors } from '../theme/colors';
 import { usePopup } from '../context/PopupContext';
 
 interface ProfileScreenProps {
   onNavigateToSettings: () => void;
+  onNavigateToDebts: () => void;
   onDataChanged?: () => void;
 }
 
 export const ProfileScreen: React.FC<ProfileScreenProps> = ({
   onNavigateToSettings,
+  onNavigateToDebts,
   onDataChanged,
 }) => {
   const { showPopup } = usePopup();
   const [isGoogleSheetsConnected, setIsGoogleSheetsConnected] = useState<boolean>(false);
+  const [isSyncing, setIsSyncing] = useState<boolean>(false);
+  const [lastSyncTime, setLastSyncTime] = useState<string | null>(null);
+  const [syncError, setSyncError] = useState<string | null>(null);
+  const [activeDebtCount, setActiveDebtCount] = useState<number>(0);
 
   useEffect(() => {
     checkSyncStatus();
+    loadDebtsSummary();
+
+    const unsubscribe = syncService.addListener((event: SyncEvent) => {
+      checkSyncStatus();
+      if (event.type === 'SYNC_START' || event.type === 'RESTORE_START') {
+        setIsSyncing(true);
+      } else if (event.type === 'SYNC_SUCCESS' || event.type === 'RESTORE_SUCCESS') {
+        setIsSyncing(false);
+        setSyncError(null);
+        setLastSyncTime(event.timestamp || new Date().toISOString());
+      } else if (event.type === 'SYNC_ERROR' || event.type === 'RESTORE_ERROR') {
+        setIsSyncing(false);
+        setSyncError(event.error || 'Lỗi đồng bộ');
+      } else if (event.type === 'STATUS_CHANGE') {
+        checkSyncStatus();
+      }
+    });
+
+    return () => {
+      unsubscribe();
+    };
   }, [onDataChanged]);
+
+  const loadDebtsSummary = async () => {
+    try {
+      const debts = await storageService.getDebts();
+      const activeCount = debts.filter((d) => d.status === 'ACTIVE').length;
+      setActiveDebtCount(activeCount);
+    } catch {
+      setActiveDebtCount(0);
+    }
+  };
 
   const checkSyncStatus = async () => {
     try {
-      const settings = await storageService.getSettings();
-      setIsGoogleSheetsConnected(Boolean(settings?.googleScriptUrl?.trim()));
+      const [settings, lastTime, status] = await Promise.all([
+        storageService.getSettings(),
+        storageService.getLastSyncTime(),
+        syncService.getSyncStatus(),
+      ]);
+      const isConnected = Boolean(settings?.googleScriptUrl?.trim());
+      setIsGoogleSheetsConnected(isConnected);
+      setLastSyncTime(lastTime);
+      setIsSyncing(status.isSyncing);
+      setSyncError(status.lastError);
     } catch {
       setIsGoogleSheetsConnected(false);
     }
   };
+
+  const formatTimeHHmm = (isoString?: string | null) => {
+    if (!isoString) return '';
+    try {
+      const d = new Date(isoString);
+      if (isNaN(d.getTime())) return '';
+      const h = d.getHours().toString().padStart(2, '0');
+      const m = d.getMinutes().toString().padStart(2, '0');
+      return `${h}:${m}`;
+    } catch {
+      return '';
+    }
+  };
+
+  // Tính toán Badge trạng thái
+  const getBadgeConfig = () => {
+    if (!isGoogleSheetsConnected) {
+      return {
+        badgeStyle: styles.syncBadgeDisconnected,
+        dotStyle: styles.syncDotDisconnected,
+        textStyle: styles.syncBadgeTextDisconnected,
+        text: 'Chưa kết nối Google Sheets',
+      };
+    }
+
+    if (isSyncing) {
+      return {
+        badgeStyle: styles.syncBadgeSyncing,
+        dotStyle: styles.syncDotSyncing,
+        textStyle: styles.syncBadgeTextSyncing,
+        text: 'Đang đồng bộ...',
+      };
+    }
+
+    if (syncError) {
+      return {
+        badgeStyle: styles.syncBadgeError,
+        dotStyle: styles.syncDotError,
+        textStyle: styles.syncBadgeTextError,
+        text: 'Lỗi đồng bộ',
+      };
+    }
+
+    const timeStr = formatTimeHHmm(lastSyncTime);
+    return {
+      badgeStyle: styles.syncBadgeConnected,
+      dotStyle: styles.syncDotConnected,
+      textStyle: styles.syncBadgeTextConnected,
+      text: timeStr ? `Đã đồng bộ lúc ${timeStr}` : 'Đã kết nối Google Sheets',
+    };
+  };
+
+  const badgeConfig = getBadgeConfig();
 
   const handleUpcomingFeature = (featureName: string) => {
     showPopup({
@@ -70,27 +169,10 @@ export const ProfileScreen: React.FC<ProfileScreenProps> = ({
           <Text style={styles.profileRole}>Tài chính cá nhân</Text>
 
           {/* Badge trạng thái đồng bộ Google Sheets */}
-          <View
-            style={[
-              styles.syncBadge,
-              isGoogleSheetsConnected ? styles.syncBadgeConnected : styles.syncBadgeDisconnected,
-            ]}
-          >
-            <View
-              style={[
-                styles.syncDot,
-                isGoogleSheetsConnected ? styles.syncDotConnected : styles.syncDotDisconnected,
-              ]}
-            />
-            <Text
-              style={[
-                styles.syncBadgeText,
-                isGoogleSheetsConnected
-                  ? styles.syncBadgeTextConnected
-                  : styles.syncBadgeTextDisconnected,
-              ]}
-            >
-              {isGoogleSheetsConnected ? 'Đã kết nối Google Sheets' : 'Chưa đồng bộ'}
+          <View style={[styles.syncBadge, badgeConfig.badgeStyle]}>
+            <View style={[styles.syncDot, badgeConfig.dotStyle]} />
+            <Text style={[styles.syncBadgeText, badgeConfig.textStyle]}>
+              {badgeConfig.text}
             </Text>
           </View>
         </View>
@@ -125,7 +207,7 @@ export const ProfileScreen: React.FC<ProfileScreenProps> = ({
           {/* Sổ nợ & Cho vay */}
           <TouchableOpacity
             style={styles.menuRow}
-            onPress={() => handleUpcomingFeature('Sổ nợ & Cho vay')}
+            onPress={onNavigateToDebts}
             activeOpacity={0.7}
           >
             <View style={[styles.iconWrapper, { backgroundColor: 'rgba(56, 189, 248, 0.12)' }]}>
@@ -135,11 +217,16 @@ export const ProfileScreen: React.FC<ProfileScreenProps> = ({
               <Text style={styles.menuTitle}>Sổ nợ & Cho vay</Text>
               <Text style={styles.menuSubtitle}>Theo dõi các khoản vay mượn cá nhân</Text>
             </View>
-            <View style={styles.badgeUpcoming}>
-              <Text style={styles.badgeUpcomingText}>Sắp ra mắt</Text>
-            </View>
+            {activeDebtCount > 0 ? (
+              <View style={[styles.badgeUpcoming, { backgroundColor: 'rgba(56, 189, 248, 0.15)' }]}>
+                <Text style={[styles.badgeUpcomingText, { color: '#38BDF8' }]}>
+                  {activeDebtCount} khoản nợ
+                </Text>
+              </View>
+            ) : null}
             <ChevronRight size={17} color={colors.textMuted} />
           </TouchableOpacity>
+
 
           <View style={styles.rowDivider} />
 
@@ -254,9 +341,17 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(52, 211, 153, 0.1)',
     borderColor: 'rgba(52, 211, 153, 0.25)',
   },
+  syncBadgeSyncing: {
+    backgroundColor: 'rgba(251, 191, 36, 0.12)',
+    borderColor: 'rgba(251, 191, 36, 0.3)',
+  },
+  syncBadgeError: {
+    backgroundColor: 'rgba(244, 63, 94, 0.12)',
+    borderColor: 'rgba(244, 63, 94, 0.3)',
+  },
   syncBadgeDisconnected: {
-    backgroundColor: 'rgba(255, 255, 255, 0.04)',
-    borderColor: 'rgba(255, 255, 255, 0.08)',
+    backgroundColor: 'rgba(244, 63, 94, 0.08)',
+    borderColor: 'rgba(244, 63, 94, 0.2)',
   },
   syncDot: {
     width: 6,
@@ -264,20 +359,32 @@ const styles = StyleSheet.create({
     borderRadius: 3,
   },
   syncDotConnected: {
-    backgroundColor: colors.income,
+    backgroundColor: '#34D399',
+  },
+  syncDotSyncing: {
+    backgroundColor: '#FBBF24',
+  },
+  syncDotError: {
+    backgroundColor: '#F43F5E',
   },
   syncDotDisconnected: {
-    backgroundColor: colors.textMuted,
+    backgroundColor: '#F43F5E',
   },
   syncBadgeText: {
     fontSize: 11,
     fontWeight: '600',
   },
   syncBadgeTextConnected: {
-    color: colors.income,
+    color: '#34D399',
+  },
+  syncBadgeTextSyncing: {
+    color: '#FBBF24',
+  },
+  syncBadgeTextError: {
+    color: '#F43F5E',
   },
   syncBadgeTextDisconnected: {
-    color: colors.textSecondary,
+    color: '#F43F5E',
   },
   section: {
     gap: 8,

@@ -6,10 +6,13 @@ export interface Transaction {
   amount: number;
   type: TransactionType;
   category: string;
-  wallet: string;
+  wallet: string; // Tên ví nguồn (hoặc ví chính)
+  toWallet?: string; // Tên ví đích nhận tiền (khi type === 'TRANSFER')
   note?: string;
   synced: boolean;
   createdAt: number;
+  updatedAt?: string;
+  isDeleted?: boolean;
 }
 
 export type WalletType = 'CASH' | 'BANK_EWALLET' | 'CREDIT_CARD' | 'PAYLATER';
@@ -33,6 +36,8 @@ export interface Wallet {
   feeWarningNote?: string;   // Ghi chú phí duy trì (VD: 'Phí dịch vụ 30k/tháng nếu có GD')
   
   createdAt: number;
+  updatedAt?: string;
+  isDeleted?: boolean;
 }
 
 // Alias tương thích ngược
@@ -125,3 +130,5 @@ export const DEFAULT_WALLETS: Wallet[] = [
     createdAt: Date.now() - 10 * 86400000,
   },
 ];
+
+export * from './debt';

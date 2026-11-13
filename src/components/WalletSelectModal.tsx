@@ -19,6 +19,9 @@ interface WalletSelectModalProps {
   visible: boolean;
   wallets: Wallet[];
   selectedWalletName: string;
+  title?: string;
+  subtitle?: string;
+  excludeWalletId?: string;
   onClose: () => void;
   onSelectWallet: (wallet: Wallet) => void;
 }
@@ -35,10 +38,18 @@ export const WalletSelectModal: React.FC<WalletSelectModalProps> = ({
   visible,
   wallets,
   selectedWalletName,
+  title = 'Chọn Ví',
+  subtitle = 'Chọn tài khoản cho giao dịch này',
+  excludeWalletId,
   onClose,
   onSelectWallet,
 }) => {
+  const displayedWallets = excludeWalletId
+    ? wallets.filter((w) => w.id !== excludeWalletId)
+    : wallets;
+
   const getWalletSubtext = (w: Wallet) => {
+
     if (w.type === 'CREDIT_CARD' || w.type === 'PAYLATER') {
       const debt = w.currentBalance || 0;
       return `Dư nợ: ${formatVND(debt)}`;
@@ -60,8 +71,8 @@ export const WalletSelectModal: React.FC<WalletSelectModalProps> = ({
           {/* Header */}
           <View style={styles.header}>
             <View>
-              <Text style={styles.title}>Chọn Ví</Text>
-              <Text style={styles.subtitle}>Chọn tài khoản nguồn cho giao dịch này</Text>
+              <Text style={styles.title}>{title}</Text>
+              <Text style={styles.subtitle}>{subtitle}</Text>
             </View>
             <TouchableOpacity
               style={styles.closeBtn}
@@ -74,7 +85,7 @@ export const WalletSelectModal: React.FC<WalletSelectModalProps> = ({
 
           {/* List */}
           <FlatList
-            data={wallets}
+            data={displayedWallets}
             keyExtractor={(item) => item.id}
             contentContainerStyle={styles.listContent}
             renderItem={({ item }) => {

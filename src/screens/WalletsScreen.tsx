@@ -122,12 +122,15 @@ export const WalletsScreen: React.FC<WalletsScreenProps> = ({ onWalletsUpdated }
           expense += t.amount;
           const tDate = new Date(t.date);
           if (
+            t.type === 'EXPENSE' &&
             tDate.getFullYear() === curYear &&
             tDate.getMonth() === curMonth
           ) {
             monthExp += t.amount;
           }
         }
+      } else if (t.type === 'TRANSFER' && t.toWallet === w.name) {
+        income += t.amount;
       }
     }
 

@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   View,
   Text,
@@ -6,7 +6,6 @@ import {
   TextInput,
   TouchableOpacity,
   ScrollView,
-  Alert,
   ActivityIndicator,
 } from 'react-native';
 import {
@@ -15,11 +14,21 @@ import {
   Send,
   HelpCircle,
   ArrowLeft,
+  RefreshCw,
+  CloudDownload,
+  CheckCircle2,
+  AlertTriangle,
+  ClipboardPaste,
+  Copy,
+  Check,
 } from 'lucide-react-native';
+import * as Clipboard from 'expo-clipboard';
+import * as Haptics from 'expo-haptics';
 import { storageService } from '../services/storage';
-import { syncService } from '../services/sync';
+import { syncService, SyncEvent } from '../services/sync';
 import { colors } from '../theme/colors';
 import { usePopup } from '../context/PopupContext';
+import { formatDateTime } from '../utils/format';
 
 interface SettingsScreenProps {
   onSettingsSaved?: () => void;
@@ -27,38 +36,92 @@ interface SettingsScreenProps {
 }
 
 export const SettingsScreen: React.FC<SettingsScreenProps> = ({ onSettingsSaved, onBack }) => {
-  const { showPopup } = usePopup();
+  const { showPopup, showConfirm } = usePopup();
+
+  // Form states
   const [googleScriptUrl, setGoogleScriptUrl] = useState<string>('');
   const [apiToken, setApiToken] = useState<string>('');
+
+  // Status & Counts
   const [isTesting, setIsTesting] = useState<boolean>(false);
   const [isSaving, setIsSaving] = useState<boolean>(false);
+  const [isSyncing, setIsSyncing] = useState<boolean>(false);
+  const [isRestoring, setIsRestoring] = useState<boolean>(false);
+  const [copiedCode, setCopiedCode] = useState<boolean>(false);
+
+  const [lastSyncTime, setLastSyncTime] = useState<string | null>(null);
+  const [hasPendingSync, setHasPendingSync] = useState<boolean>(false);
   const [testResult, setTestResult] = useState<{
     success: boolean;
     message: string;
   } | null>(null);
 
-  const [totalCount, setTotalCount] = useState<number>(0);
-  const [syncedCount, setSyncedCount] = useState<number>(0);
+  const [transactionCount, setTransactionCount] = useState<number>(0);
+  const [walletCount, setWalletCount] = useState<number>(0);
+  const [debtCount, setDebtCount] = useState<number>(0);
 
-  useEffect(() => {
-    loadSettings();
-  }, []);
-
-  const loadSettings = async () => {
+  const loadData = useCallback(async () => {
     try {
-      const [settings, transactions] = await Promise.all([
+      const [settings, lastTime, pending, transactions, wallets, debts] = await Promise.all([
         storageService.getSettings(),
-        storageService.getTransactions(),
+        storageService.getLastSyncTime(),
+        storageService.getPendingSync(),
+        storageService.getTransactions(false),
+        storageService.getWallets(false),
+        storageService.getDebts(false),
       ]);
+
       setGoogleScriptUrl(settings.googleScriptUrl || '');
       setApiToken(settings.apiToken || '');
-      setTotalCount(transactions.length);
-      setSyncedCount(transactions.filter((t) => t.synced).length);
+      setLastSyncTime(lastTime);
+      setHasPendingSync(pending);
+      setTransactionCount(transactions.length);
+      setWalletCount(wallets.length);
+      setDebtCount(debts.length);
     } catch (error) {
-      console.error('Lỗi khi tải cấu hình:', error);
+      console.error('Lỗi khi tải dữ liệu cài đặt:', error);
+    }
+  }, []);
+
+  useEffect(() => {
+    loadData();
+
+    // Lắng nghe các sự kiện đồng bộ từ syncService
+    const unsubscribe = syncService.addListener((event: SyncEvent) => {
+      if (
+        event.type === 'SYNC_SUCCESS' ||
+        event.type === 'RESTORE_SUCCESS' ||
+        event.type === 'STATUS_CHANGE'
+      ) {
+        loadData();
+      }
+    });
+
+    return () => {
+      unsubscribe();
+    };
+  }, [loadData]);
+
+  // Nút Dán nhanh từ Clipboard
+  const handlePasteUrl = async () => {
+    try {
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+      const text = await Clipboard.getStringAsync();
+      if (text && text.trim().length > 0) {
+        setGoogleScriptUrl(text.trim());
+      } else {
+        showPopup({
+          type: 'INFO',
+          title: 'Khay nhớ tạm trống',
+          message: 'Không tìm thấy nội dung văn bản trong khay nhớ tạm để dán.',
+        });
+      }
+    } catch (err) {
+      console.warn('Lỗi khi đọc khay nhớ tạm:', err);
     }
   };
 
+  // Lưu cài đặt
   const handleSave = async () => {
     setIsSaving(true);
     try {
@@ -66,6 +129,7 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({ onSettingsSaved,
         googleScriptUrl: googleScriptUrl.trim(),
         apiToken: apiToken.trim(),
       });
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       showPopup({
         type: 'SUCCESS',
         title: 'Thành công',
@@ -84,6 +148,7 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({ onSettingsSaved,
     }
   };
 
+  // Kiểm tra kết nối (PING)
   const handleTestConnection = async () => {
     if (!googleScriptUrl.trim()) {
       showPopup({
@@ -97,57 +162,274 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({ onSettingsSaved,
     setIsTesting(true);
     setTestResult(null);
 
-    const result = await syncService.testConnection(googleScriptUrl, apiToken);
+    const result = await syncService.pingUrl(googleScriptUrl);
     setTestResult(result);
     setIsTesting(false);
+
+    if (result.success) {
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    } else {
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+    }
   };
 
-  const sampleAppsScriptCode = `function doPost(e) {
+  // Đồng bộ 2 chiều ngay lập tức (SYNC)
+  const handleSyncNow = async () => {
+    if (!googleScriptUrl.trim()) {
+      showPopup({
+        type: 'WARNING',
+        title: 'Chưa cấu hình URL',
+        message: 'Vui lòng nhập và lưu Google Apps Script Web App URL trước khi đồng bộ.',
+      });
+      return;
+    }
+
+    setIsSyncing(true);
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+
+    try {
+      const res = await syncService.syncNow(false);
+      if (res.success) {
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+        showPopup({
+          type: 'SUCCESS',
+          title: 'Đồng bộ hoàn tất',
+          message: 'Dữ liệu 2 chiều giữa thiết bị và Google Sheets đã được hợp nhất thành công!',
+          confirmText: 'Tuyệt vời',
+        });
+        await loadData();
+        onSettingsSaved?.();
+      } else {
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+        showPopup({
+          type: 'ERROR',
+          title: 'Đồng bộ không thành công',
+          message: res.error || 'Có lỗi xảy ra trong quá trình đồng bộ.',
+        });
+      }
+    } catch (err: any) {
+      showPopup({
+        type: 'ERROR',
+        title: 'Lỗi hệ thống',
+        message: err?.message || 'Không thể thực hiện đồng bộ.',
+      });
+    } finally {
+      setIsSyncing(false);
+    }
+  };
+
+  // Khôi phục từ Google Sheets (RESTORE)
+  const handleRestoreFromCloud = () => {
+    if (!googleScriptUrl.trim()) {
+      showPopup({
+        type: 'WARNING',
+        title: 'Chưa cấu hình URL',
+        message: 'Vui lòng nhập và lưu Google Apps Script Web App URL trước khi khôi phục.',
+      });
+      return;
+    }
+
+    showConfirm({
+      type: 'WARNING',
+      title: 'Khôi phục từ Google Sheets?',
+      message:
+        'Cảnh báo: Toàn bộ dữ liệu chưa đồng bộ trên máy này sẽ được thay thế bằng dữ liệu đang có trên Google Sheets. Bạn có chắc chắn muốn tiếp tục?',
+      confirmText: 'Khôi phục ngay',
+      cancelText: 'Hủy',
+      onConfirm: async () => {
+        setIsRestoring(true);
+        try {
+          const res = await syncService.restoreFromCloud();
+          if (res.success) {
+            Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+            showPopup({
+              type: 'SUCCESS',
+              title: 'Khôi phục thành công',
+              message: `Đã khôi phục thành công ${res.walletsCount} ví, ${res.transactionsCount} giao dịch, ${res.debtsCount} khoản nợ từ Google Sheets!`,
+              confirmText: 'Xong',
+            });
+            await loadData();
+            onSettingsSaved?.();
+          } else {
+            Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+            showPopup({
+              type: 'ERROR',
+              title: 'Khôi phục thất bại',
+              message: res.error || 'Có lỗi xảy ra khi khôi phục dữ liệu.',
+            });
+          }
+        } catch (err: any) {
+          showPopup({
+            type: 'ERROR',
+            title: 'Lỗi hệ thống',
+            message: err?.message || 'Không thể khôi phục dữ liệu.',
+          });
+        } finally {
+          setIsRestoring(false);
+        }
+      },
+    });
+  };
+
+  // Sao chép toàn bộ mã nguồn Google Apps Script
+  const handleCopyAppsScriptCode = async () => {
+    try {
+      await Clipboard.setStringAsync(sampleAppsScriptCode);
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      setCopiedCode(true);
+      setTimeout(() => setCopiedCode(false), 2500);
+      showPopup({
+        type: 'SUCCESS',
+        title: 'Đã sao chép mã nguồn',
+        message: 'Đã sao chép trọn vẹn mã nguồn Google Apps Script vào khay nhớ tạm!',
+        confirmText: 'Đã hiểu',
+      });
+    } catch (err) {
+      console.warn('Lỗi copy mã nguồn:', err);
+    }
+  };
+
+  const sampleAppsScriptCode = `/**
+ * ============================================================================
+ * GOOGLE APPS SCRIPT: HỆ THỐNG ĐỒNG BỘ 2 CHIỀU (OFFLINE-FIRST TWO-WAY SYNC)
+ * File: docs/google-apps-script.js
+ * ============================================================================
+ */
+var SCHEMAS = {
+  Wallets: ['id', 'name', 'type', 'icon', 'logoId', 'colorGradient', 'balance', 'creditLimit', 'currentBalance', 'statementDate', 'dueDate', 'feeWarningNote', 'createdAt', 'updatedAt', 'isDeleted'],
+  Transactions: ['id', 'date', 'amount', 'type', 'category', 'wallet', 'toWallet', 'note', 'synced', 'createdAt', 'updatedAt', 'isDeleted'],
+  Debts: ['id', 'type', 'personName', 'totalAmount', 'paidAmount', 'walletId', 'syncWithWallet', 'createdDate', 'dueDate', 'note', 'status', 'payments', 'createdAt', 'updatedAt', 'isDeleted']
+};
+
+function doGet(e) {
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  return createJsonResponse({ status: 'success', message: 'Script running', sheetName: ss ? ss.getName() : '', serverTime: new Date().toISOString() });
+}
+
+function doPost(e) {
+  var lock = LockService.getScriptLock();
+  var hasLock = false;
   try {
-    var data = JSON.parse(e.postData.contents);
-    var sheet = SpreadsheetApp.getActiveSpreadsheet().getActiveSheet();
-    
-    // Tự động tạo tiêu đề cột nếu sheet còn trống
-    if (sheet.getLastRow() === 0) {
-      sheet.appendRow(["ID", "Thời gian", "Loại", "Danh mục", "Số tiền (VND)", "Ví", "Ghi chú", "Ngày tạo"]);
-      sheet.getRange(1, 1, 1, 8).setFontWeight("bold").setBackground("#E2E8F0");
+    hasLock = lock.tryLock(30000);
+    if (!hasLock) return createJsonResponse({ status: 'error', message: 'Server busy' });
+    var data = {};
+    if (e && e.postData && e.postData.contents) data = JSON.parse(e.postData.contents);
+    var action = (data.action || '').toUpperCase();
+    var ss = SpreadsheetApp.getActiveSpreadsheet();
+    ensureAllSheetsExist(ss);
+
+    if (action === 'PING') {
+      return createJsonResponse({ status: 'success', sheetName: ss.getName(), serverTime: new Date().toISOString() });
     }
-    
-    // Lệnh test kết nối từ ứng dụng
-    if (data.action === "test") {
-      return ContentService.createTextOutput(JSON.stringify({ 
-        status: "success", 
-        message: "Kết nối Google Apps Script thành công!" 
-      })).setMimeType(ContentService.MimeType.JSON);
+    if (action === 'SYNC') {
+      var w = syncSheetEntity(ss, 'Wallets', SCHEMAS.Wallets, data.wallets || []);
+      var t = syncSheetEntity(ss, 'Transactions', SCHEMAS.Transactions, data.transactions || []);
+      var d = syncSheetEntity(ss, 'Debts', SCHEMAS.Debts, data.debts || []);
+      return createJsonResponse({ status: 'success', wallets: w, transactions: t, debts: d, serverTime: new Date().toISOString() });
     }
-    
-    // Đồng bộ danh sách giao dịch
-    var items = data.transactions || [];
-    for (var i = 0; i < items.length; i++) {
-      var item = items[i];
-      sheet.appendRow([
-        item.id,
-        item.date,
-        item.type === "EXPENSE" ? "Chi tiêu" : "Thu nhập",
-        item.category,
-        item.amount,
-        item.wallet,
-        item.note || "",
-        new Date(item.createdAt).toLocaleString("vi-VN")
-      ]);
+    if (action === 'RESTORE') {
+      var w = readAllFromSheet(ss, 'Wallets', SCHEMAS.Wallets);
+      var t = readAllFromSheet(ss, 'Transactions', SCHEMAS.Transactions);
+      var d = readAllFromSheet(ss, 'Debts', SCHEMAS.Debts);
+      return createJsonResponse({ status: 'success', wallets: w, transactions: t, debts: d, serverTime: new Date().toISOString() });
     }
-    
-    return ContentService.createTextOutput(JSON.stringify({ 
-      status: "success", 
-      count: items.length 
-    })).setMimeType(ContentService.MimeType.JSON);
-    
+    return createJsonResponse({ status: 'error', message: 'Action not supported: ' + action });
   } catch (err) {
-    return ContentService.createTextOutput(JSON.stringify({ 
-      status: "error", 
-      message: err.toString() 
-    })).setMimeType(ContentService.MimeType.JSON);
+    return createJsonResponse({ status: 'error', message: err.toString() });
+  } finally {
+    if (hasLock) lock.releaseLock();
   }
+}
+
+function syncSheetEntity(ss, sheetName, headers, clientItems) {
+  var sheet = ss.getSheetByName(sheetName);
+  var existing = readAllFromSheet(ss, sheetName, headers);
+  var itemMap = {};
+  for (var i = 0; i < existing.length; i++) if (existing[i].id) itemMap[existing[i].id] = existing[i];
+  for (var j = 0; j < clientItems.length; j++) {
+    var c = clientItems[j];
+    if (!c || !c.id) continue;
+    var s = itemMap[c.id];
+    if (!s) { itemMap[c.id] = c; }
+    else {
+      var cTime = parseTimestamp(c.updatedAt || c.createdAt);
+      var sTime = parseTimestamp(s.updatedAt || s.createdAt);
+      itemMap[c.id] = cTime >= sTime ? c : s;
+    }
+  }
+  var list = [];
+  for (var k in itemMap) if (itemMap.hasOwnProperty(k)) list.push(itemMap[k]);
+  writeAllToSheet(sheet, headers, list);
+  return list;
+}
+
+function readAllFromSheet(ss, sheetName, headers) {
+  var sheet = ss.getSheetByName(sheetName);
+  if (!sheet) return [];
+  var lastRow = sheet.getLastRow();
+  if (lastRow <= 1) return [];
+  var vals = sheet.getRange(2, 1, lastRow - 1, headers.length).getValues();
+  var res = [];
+  for (var i = 0; i < vals.length; i++) {
+    var row = vals[i], obj = {}, hasId = false;
+    for (var h = 0; h < headers.length; h++) {
+      var f = headers[h], v = row[h];
+      if (f === 'id' && v) hasId = true;
+      if (f === 'colorGradient' || f === 'payments') {
+        try { obj[f] = JSON.parse(v); } catch(e) { obj[f] = f === 'colorGradient' ? ['#8B5CF6','#6366F1'] : []; }
+      } else if (f === 'isDeleted' || f === 'synced' || f === 'syncWithWallet') {
+        obj[f] = (v === true || v === 'true' || v === 'TRUE');
+      } else if (typeof v === 'number' || !isNaN(Number(v))) {
+        obj[f] = f.indexOf('Date') !== -1 && isNaN(Number(v)) ? String(v) : (v === '' ? '' : (isNaN(Number(v)) ? v : Number(v)));
+      } else {
+        obj[f] = v !== null && v !== undefined ? String(v) : '';
+      }
+    }
+    if (hasId) res.push(obj);
+  }
+  return res;
+}
+
+function writeAllToSheet(sheet, headers, items) {
+  var lastRow = sheet.getLastRow();
+  if (lastRow > 1) sheet.getRange(2, 1, lastRow - 1, headers.length).clearContent();
+  if (!items || items.length === 0) return;
+  var rows = [];
+  for (var i = 0; i < items.length; i++) {
+    var it = items[i], r = [];
+    for (var h = 0; h < headers.length; h++) {
+      var f = headers[h], v = it[f];
+      if (f === 'colorGradient' || f === 'payments') r.push(v ? JSON.stringify(v) : '');
+      else if (f === 'isDeleted' || f === 'synced' || f === 'syncWithWallet') r.push(Boolean(v));
+      else r.push(v !== undefined && v !== null ? v : '');
+    }
+    rows.push(r);
+  }
+  sheet.getRange(2, 1, rows.length, headers.length).setValues(rows);
+}
+
+function ensureAllSheetsExist(ss) {
+  var names = ['Wallets', 'Transactions', 'Debts'];
+  for (var i = 0; i < names.length; i++) {
+    var n = names[i], s = ss.getSheetByName(n);
+    if (!s) s = ss.insertSheet(n);
+    if (s.getLastRow() === 0) {
+      s.appendRow(SCHEMAS[n]);
+      s.getRange(1, 1, 1, SCHEMAS[n].length).setFontWeight('bold').setBackground('#E2E8F0').setHorizontalAlignment('center');
+      s.setFrozenRows(1);
+    }
+  }
+}
+
+function parseTimestamp(val) {
+  if (!val) return 0;
+  if (typeof val === 'number') return val;
+  var t = new Date(val).getTime();
+  return isNaN(t) ? 0 : t;
+}
+
+function createJsonResponse(data) {
+  return ContentService.createTextOutput(JSON.stringify(data)).setMimeType(ContentService.MimeType.JSON);
 }`;
 
   return (
@@ -165,49 +447,132 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({ onSettingsSaved,
             <Text style={styles.backButtonText}>Cài đặt</Text>
           </TouchableOpacity>
         )}
-        <Text style={styles.title}>Cài đặt đồng bộ</Text>
+        <Text style={styles.title}>Đồng bộ Google Sheets</Text>
         <Text style={styles.subtitle}>
-          Kết nối ứng dụng với Google Sheets thông qua Google Apps Script Web App
+          Sao lưu và đồng bộ 2 chiều (Offline-First) bảo vệ toàn vẹn dữ liệu
         </Text>
       </View>
 
-      {/* Thống kê dữ liệu offline */}
-      <View style={styles.statsCard}>
-        <View style={styles.statBox}>
-          <Text style={styles.statNumber}>{totalCount}</Text>
-          <Text style={styles.statLabel}>Tổng giao dịch</Text>
+      {/* 2. Thẻ Trạng thái Đồng bộ Chi tiết */}
+      <View style={styles.syncCard}>
+        <View style={styles.syncCardHeader}>
+          <View>
+            <Text style={styles.syncCardTitle}>Trạng thái đồng bộ</Text>
+            <Text style={styles.syncCardSubtitle}>
+              {googleScriptUrl.trim() ? 'Đã liên kết Web App' : 'Chưa cấu hình URL'}
+            </Text>
+          </View>
+          <View
+            style={[
+              styles.statusPill,
+              hasPendingSync ? styles.statusPillWarning : styles.statusPillSuccess,
+            ]}
+          >
+            {hasPendingSync ? (
+              <>
+                <AlertTriangle size={13} color={colors.warning} />
+                <Text style={styles.statusPillTextWarning}>Chờ đồng bộ</Text>
+              </>
+            ) : (
+              <>
+                <CheckCircle2 size={13} color={colors.income} />
+                <Text style={styles.statusPillTextSuccess}>Đã cập nhật</Text>
+              </>
+            )}
+          </View>
         </View>
-        <View style={styles.statDivider} />
-        <View style={styles.statBox}>
-          <Text style={[styles.statNumber, { color: colors.income }]}>{syncedCount}</Text>
-          <Text style={styles.statLabel}>Đã lên Sheet</Text>
-        </View>
-        <View style={styles.statDivider} />
-        <View style={styles.statBox}>
-          <Text style={[styles.statNumber, { color: colors.warning }]}>
-            {totalCount - syncedCount}
+
+        <View style={styles.syncTimeBox}>
+          <Text style={styles.syncTimeLabel}>Đồng bộ lần cuối:</Text>
+          <Text style={styles.syncTimeValue}>
+            {lastSyncTime ? formatDateTime(lastSyncTime) : 'Chưa từng đồng bộ'}
           </Text>
-          <Text style={styles.statLabel}>Chờ đồng bộ</Text>
+        </View>
+
+        {/* Thống kê dữ liệu */}
+        <View style={styles.miniStatsRow}>
+          <View style={styles.miniStatItem}>
+            <Text style={styles.miniStatNum}>{walletCount}</Text>
+            <Text style={styles.miniStatLabel}>Ví tiền</Text>
+          </View>
+          <View style={styles.miniStatDivider} />
+          <View style={styles.miniStatItem}>
+            <Text style={styles.miniStatNum}>{transactionCount}</Text>
+            <Text style={styles.miniStatLabel}>Giao dịch</Text>
+          </View>
+          <View style={styles.miniStatDivider} />
+          <View style={styles.miniStatItem}>
+            <Text style={styles.miniStatNum}>{debtCount}</Text>
+            <Text style={styles.miniStatLabel}>Khoản nợ</Text>
+          </View>
+        </View>
+
+        {/* 2 Nút hành động chính: SYNC & RESTORE */}
+        <View style={styles.syncButtonsRow}>
+          <TouchableOpacity
+            style={[styles.syncActionButton, styles.syncNowButton, isSyncing && { opacity: 0.7 }]}
+            onPress={handleSyncNow}
+            disabled={isSyncing || isRestoring}
+            activeOpacity={0.8}
+          >
+            {isSyncing ? (
+              <ActivityIndicator size="small" color="#FFFFFF" />
+            ) : (
+              <RefreshCw size={16} color="#FFFFFF" strokeWidth={2.4} />
+            )}
+            <Text style={styles.syncNowButtonText}>
+              {isSyncing ? 'Đang đồng bộ...' : 'Đồng bộ ngay'}
+            </Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={[
+              styles.syncActionButton,
+              styles.restoreButton,
+              isRestoring && { opacity: 0.7 },
+            ]}
+            onPress={handleRestoreFromCloud}
+            disabled={isSyncing || isRestoring}
+            activeOpacity={0.8}
+          >
+            {isRestoring ? (
+              <ActivityIndicator size="small" color={colors.warning} />
+            ) : (
+              <CloudDownload size={16} color={colors.warning} strokeWidth={2.4} />
+            )}
+            <Text style={styles.restoreButtonText}>
+              {isRestoring ? 'Đang tải...' : 'Khôi phục từ Sheet'}
+            </Text>
+          </TouchableOpacity>
         </View>
       </View>
 
-      {/* 2. Cấu hình Form */}
+      {/* 3. Cấu hình Form Web App URL */}
       <View style={styles.card}>
-        <Text style={styles.cardTitle}>Cấu hình Web App URL</Text>
+        <Text style={styles.cardTitle}>Cấu hình Google Apps Script</Text>
 
-        <Text style={styles.inputLabel}>Google Apps Script Web App URL *</Text>
-        <TextInput
-          style={styles.input}
-          placeholder="https://script.google.com/macros/s/.../exec"
-          placeholderTextColor={colors.textMuted}
-          value={googleScriptUrl}
-          onChangeText={setGoogleScriptUrl}
-          autoCapitalize="none"
-          autoCorrect={false}
-          multiline={false}
-        />
+        <Text style={styles.inputLabel}>Web App URL *</Text>
+        <View style={styles.inputContainerWithPaste}>
+          <TextInput
+            style={styles.inputWithPaste}
+            placeholder="https://script.google.com/macros/s/.../exec"
+            placeholderTextColor={colors.textMuted}
+            value={googleScriptUrl}
+            onChangeText={setGoogleScriptUrl}
+            autoCapitalize="none"
+            autoCorrect={false}
+          />
+          <TouchableOpacity
+            style={styles.pasteButton}
+            onPress={handlePasteUrl}
+            activeOpacity={0.7}
+          >
+            <ClipboardPaste size={16} color={colors.primaryLight} />
+            <Text style={styles.pasteButtonText}>Dán</Text>
+          </TouchableOpacity>
+        </View>
 
-        <Text style={styles.inputLabel}>Khóa bí mật API Token (Tùy chọn)</Text>
+        <Text style={styles.inputLabel}>Mã bảo mật API Token (Tùy chọn)</Text>
         <TextInput
           style={styles.input}
           placeholder="Nhập secret token nếu bạn có cài đặt bảo mật"
@@ -218,7 +583,7 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({ onSettingsSaved,
           autoCorrect={false}
         />
 
-        {/* Kết quả Test */}
+        {/* Kết quả Test PING */}
         {testResult && (
           <View
             style={[
@@ -238,7 +603,7 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({ onSettingsSaved,
           </View>
         )}
 
-        {/* Nút hành động */}
+        {/* Nút Kiểm tra kết nối & Lưu */}
         <View style={styles.actionButtonsRow}>
           <TouchableOpacity
             style={[styles.testButton, isTesting && { opacity: 0.7 }]}
@@ -272,41 +637,64 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({ onSettingsSaved,
         </View>
       </View>
 
-      {/* 3. Hướng dẫn từng bước */}
+      {/* 4. Hướng dẫn Triển khai 4 bước chuẩn */}
       <View style={styles.card}>
         <View style={styles.guideHeader}>
           <HelpCircle size={18} color={colors.primaryBright} />
-          <Text style={styles.cardTitle}>Hướng dẫn tạo Google Apps Script</Text>
+          <Text style={styles.cardTitle}>Hướng dẫn Triển khai Apps Script (4 bước)</Text>
         </View>
 
         <View style={styles.stepsList}>
           <Text style={styles.stepItem}>
-            <Text style={styles.stepBold}>Bước 1:</Text> Truy cập{' '}
-            <Text style={styles.linkText}>sheets.google.com</Text> và tạo một Bảng tính mới (Google Sheets).
+            <Text style={styles.stepBold}>Bước 1:</Text> Mở{' '}
+            <Text style={styles.linkText}>Google Sheets (sheets.google.com)</Text> và tạo một Bảng
+            tính mới.
           </Text>
           <Text style={styles.stepItem}>
-            <Text style={styles.stepBold}>Bước 2:</Text> Trên thanh menu, chọn{' '}
+            <Text style={styles.stepBold}>Bước 2:</Text> Trên thanh menu Bảng tính, chọn{' '}
             <Text style={styles.stepBold}>Tiện ích mở rộng (Extensions)</Text> →{' '}
             <Text style={styles.stepBold}>Apps Script</Text>.
           </Text>
           <Text style={styles.stepItem}>
             <Text style={styles.stepBold}>Bước 3:</Text> Dán toàn bộ mã nguồn bên dưới vào file{' '}
-            <Text style={styles.stepBold}>Code.gs</Text> rồi nhấn biểu tượng Save.
+            <Text style={styles.stepBold}>Code.gs</Text> rồi nhấn biểu tượng Save (Lưu).
           </Text>
           <Text style={styles.stepItem}>
             <Text style={styles.stepBold}>Bước 4:</Text> Nhấn nút{' '}
             <Text style={styles.stepBold}>Triển khai (Deploy)</Text> →{' '}
             <Text style={styles.stepBold}>Triển khai mới (New deployment)</Text>:
-            {'\n'}• Loại: <Text style={styles.stepBold}>Ứng dụng web (Web app)</Text>
-            {'\n'}• Thực thi dưới dạng (Execute as): <Text style={styles.stepBold}>Tôi (Me)</Text>
+            {'\n'}• Chọn loại:{' '}
+            <Text style={styles.stepBold}>Ứng dụng web (Web app)</Text>
+            {'\n'}• Thực thi dưới dạng (Execute as):{' '}
+            <Text style={styles.stepBold}>Tôi (Me)</Text>
             {'\n'}• Ai có quyền truy cập (Who has access):{' '}
-            <Text style={styles.stepBold}>Bất kỳ ai (Anyone)</Text>
-          </Text>
-          <Text style={styles.stepItem}>
-            <Text style={styles.stepBold}>Bước 5:</Text> Nhấn <Text style={styles.stepBold}>Triển khai</Text>, cấp quyền và sao chép{' '}
-            <Text style={styles.stepBold}>Web app URL</Text> (kết thúc bằng <Text style={styles.codeText}>/exec</Text>) dán vào ô trên.
+            <Text style={styles.stepBoldHighlight}>Bất kỳ ai (Anyone)</Text>
+            {'\n'}→ Nhấn <Text style={styles.stepBold}>Triển khai</Text>, cấp quyền và sao chép{' '}
+            <Text style={styles.stepBold}>Web app URL</Text> (kết thúc bằng{' '}
+            <Text style={styles.codeText}>/exec</Text>) dán vào ô bên trên.
           </Text>
         </View>
+
+        {/* Nút Sao chép mã nguồn */}
+        <TouchableOpacity
+          style={styles.copyCodeButton}
+          onPress={handleCopyAppsScriptCode}
+          activeOpacity={0.7}
+        >
+          {copiedCode ? (
+            <Check size={16} color={colors.income} />
+          ) : (
+            <Copy size={16} color={colors.primaryLight} />
+          )}
+          <Text
+            style={[
+              styles.copyCodeButtonText,
+              copiedCode && { color: colors.income },
+            ]}
+          >
+            {copiedCode ? 'Đã sao chép mã nguồn!' : 'Sao chép toàn bộ mã nguồn Apps Script'}
+          </Text>
+        </TouchableOpacity>
 
         <View style={styles.codeBlockHeader}>
           <Code2 size={15} color={colors.textSecondary} />
@@ -360,33 +748,132 @@ const styles = StyleSheet.create({
     marginTop: 4,
     lineHeight: 18,
   },
-  statsCard: {
-    flexDirection: 'row',
-    backgroundColor: colors.surface,
-    borderRadius: 16,
-    padding: 14,
+  syncCard: {
+    backgroundColor: colors.surfaceSecondary,
+    borderRadius: 20,
+    padding: 18,
     borderWidth: 1,
     borderColor: colors.border,
-    justifyContent: 'space-around',
+    gap: 14,
+  },
+  syncCardHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
     alignItems: 'center',
   },
-  statBox: {
-    alignItems: 'center',
-  },
-  statNumber: {
-    fontSize: 20,
+  syncCardTitle: {
+    fontSize: 16,
     fontWeight: '800',
     color: colors.textPrimary,
   },
-  statLabel: {
-    fontSize: 11,
+  syncCardSubtitle: {
+    fontSize: 12,
     color: colors.textSecondary,
     marginTop: 2,
   },
-  statDivider: {
+  statusPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 12,
+    borderWidth: 1,
+  },
+  statusPillSuccess: {
+    backgroundColor: 'rgba(52, 211, 153, 0.12)',
+    borderColor: 'rgba(52, 211, 153, 0.3)',
+  },
+  statusPillWarning: {
+    backgroundColor: 'rgba(245, 158, 11, 0.12)',
+    borderColor: 'rgba(245, 158, 11, 0.3)',
+  },
+  statusPillTextSuccess: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: colors.income,
+  },
+  statusPillTextWarning: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: colors.warning,
+  },
+  syncTimeBox: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: 'rgba(255, 255, 255, 0.03)',
+    paddingHorizontal: 12,
+    paddingVertical: 9,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.06)',
+  },
+  syncTimeLabel: {
+    fontSize: 12,
+    color: colors.textSecondary,
+  },
+  syncTimeValue: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: colors.textPrimary,
+  },
+  miniStatsRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-around',
+    paddingVertical: 6,
+  },
+  miniStatItem: {
+    alignItems: 'center',
+  },
+  miniStatNum: {
+    fontSize: 17,
+    fontWeight: '800',
+    color: colors.textPrimary,
+  },
+  miniStatLabel: {
+    fontSize: 11,
+    color: colors.textMuted,
+    marginTop: 2,
+  },
+  miniStatDivider: {
     width: 1,
-    height: 28,
+    height: 24,
     backgroundColor: colors.border,
+  },
+  syncButtonsRow: {
+    flexDirection: 'row',
+    gap: 10,
+    marginTop: 4,
+  },
+  syncActionButton: {
+    flex: 1,
+    height: 46,
+    borderRadius: 14,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+  },
+  syncNowButton: {
+    backgroundColor: colors.primary,
+    elevation: 3,
+  },
+  syncNowButtonText: {
+    fontSize: 13.5,
+    fontWeight: '700',
+    color: '#FFFFFF',
+  },
+  restoreButton: {
+    backgroundColor: 'rgba(245, 158, 11, 0.12)',
+    borderWidth: 1,
+    borderColor: 'rgba(245, 158, 11, 0.3)',
+  },
+  restoreButtonText: {
+    fontSize: 13.5,
+    fontWeight: '700',
+    color: colors.warning,
   },
   card: {
     backgroundColor: colors.surface,
@@ -407,6 +894,36 @@ const styles = StyleSheet.create({
     color: colors.textSecondary,
     marginBottom: 6,
     marginTop: 8,
+  },
+  inputContainerWithPaste: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: colors.bg,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: 12,
+    paddingRight: 6,
+  },
+  inputWithPaste: {
+    flex: 1,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    fontSize: 13,
+    color: colors.textPrimary,
+  },
+  pasteButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingHorizontal: 10,
+    paddingVertical: 7,
+    borderRadius: 8,
+    backgroundColor: 'rgba(139, 92, 246, 0.15)',
+  },
+  pasteButtonText: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: colors.primaryLight,
   },
   input: {
     backgroundColor: colors.bg,
@@ -478,8 +995,8 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   stepsList: {
-    gap: 8,
-    marginVertical: 8,
+    gap: 10,
+    marginVertical: 10,
   },
   stepItem: {
     fontSize: 13,
@@ -490,6 +1007,10 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     color: colors.textPrimary,
   },
+  stepBoldHighlight: {
+    fontWeight: '800',
+    color: colors.warning,
+  },
   linkText: {
     color: colors.primaryLight,
     textDecorationLine: 'underline',
@@ -498,11 +1019,29 @@ const styles = StyleSheet.create({
     color: colors.warning,
     fontFamily: 'monospace',
   },
+  copyCodeButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    backgroundColor: 'rgba(139, 92, 246, 0.12)',
+    borderWidth: 1,
+    borderColor: 'rgba(139, 92, 246, 0.3)',
+    borderRadius: 12,
+    paddingVertical: 11,
+    marginTop: 6,
+    marginBottom: 12,
+  },
+  copyCodeButtonText: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: colors.primaryLight,
+  },
   codeBlockHeader: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 6,
-    marginTop: 14,
+    marginTop: 6,
     marginBottom: 6,
   },
   codeBlockTitle: {

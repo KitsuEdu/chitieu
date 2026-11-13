@@ -164,8 +164,13 @@ export const HistoryScreen: React.FC<HistoryScreenProps> = ({ onRefreshTriggered
 
   const renderTransactionItem = ({ item }: { item: Transaction }) => {
     const isExpense = item.type === 'EXPENSE';
-    const amountPrefix = isExpense ? '-' : '+';
-    const amountColor = isExpense ? colors.expense : colors.income;
+    const isTransfer = item.type === 'TRANSFER';
+    const amountPrefix = isTransfer ? '' : isExpense ? '-' : '+';
+    const amountColor = isTransfer
+      ? colors.primaryLight
+      : isExpense
+      ? colors.expense
+      : colors.income;
 
     return (
       <View style={styles.card}>
@@ -176,7 +181,11 @@ export const HistoryScreen: React.FC<HistoryScreenProps> = ({ onRefreshTriggered
               <Text style={styles.categoryTitle}>{item.category}</Text>
               <View style={styles.walletBadge}>
                 <Banknote size={11} color={colors.textSecondary} style={{ marginRight: 3 }} />
-                <Text style={styles.walletText}>{item.wallet}</Text>
+                <Text style={styles.walletText}>
+                  {isTransfer && item.toWallet
+                    ? `${item.wallet} → ${item.toWallet}`
+                    : item.wallet}
+                </Text>
               </View>
             </View>
 

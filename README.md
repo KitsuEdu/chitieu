@@ -73,17 +73,51 @@ function doPost(e) {
       })).setMimeType(ContentService.MimeType.JSON);
     }
     
+    // Xử lý đồng bộ sổ nợ & cho vay
+    if (data.action === "sync_debts") {
+      var debtSheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName("Sổ nợ");
+      if (!debtSheet) {
+        debtSheet = SpreadsheetApp.getActiveSpreadsheet().insertSheet("Sổ nợ");
+      }
+      if (debtSheet.getLastRow() === 0) {
+        debtSheet.appendRow(["ID", "Loại", "Người liên quan", "Tổng tiền (VND)", "Đã trả (VND)", "Còn lại (VND)", "Trạng thái", "Ngày tạo", "Hạn trả", "Ghi chú"]);
+        debtSheet.getRange(1, 1, 1, 10).setFontWeight("bold").setBackground("#E2E8F0");
+      }
+      var debts = data.debts || [];
+      for (var j = 0; j < debts.length; j++) {
+        var d = debts[j];
+        var remain = Math.max(d.totalAmount - (d.paidAmount || 0), 0);
+        debtSheet.appendRow([
+          d.id,
+          d.type === "LEND" ? "Cho vay" : "Đi vay",
+          d.personName,
+          d.totalAmount,
+          d.paidAmount || 0,
+          remain,
+          d.status === "SETTLED" ? "Đã tất toán" : "Đang nợ",
+          d.createdDate,
+          d.dueDate || "",
+          d.note || ""
+        ]);
+      }
+      return ContentService.createTextOutput(JSON.stringify({
+        status: "success",
+        count: debts.length
+      })).setMimeType(ContentService.MimeType.JSON);
+    }
+
     // Ghi các giao dịch đồng bộ
     var items = data.transactions || [];
+
     for (var i = 0; i < items.length; i++) {
       var item = items[i];
       sheet.appendRow([
         item.id,
         item.date,
-        item.type === "EXPENSE" ? "Chi tiêu" : "Thu nhập",
+        item.type === "EXPENSE" ? "Chi tiêu" : item.type === "INCOME" ? "Thu nhập" : "Chuyển khoản",
         item.category,
         item.amount,
-        item.wallet,
+        item.toWallet ? (item.wallet + " -> " + item.toWallet) : item.wallet,
         item.note || "",
         new Date(item.createdAt).toLocaleString("vi-VN")
       ]);

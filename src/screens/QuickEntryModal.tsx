@@ -32,6 +32,7 @@ import {
   Wallet as WalletIcon,
   AlignLeft,
   Check,
+  ArrowUpDown,
 } from 'lucide-react-native';
 import { CATEGORIES, TransactionType, Wallet } from '../types';
 import { storageService } from '../services/storage';
@@ -108,6 +109,8 @@ export const QuickEntryModal: React.FC<QuickEntryModalProps> = ({
   const [type, setType] = useState<TransactionType>('EXPENSE');
   const [category, setCategory] = useState<string>(CATEGORIES[0]);
   const [selectedWallet, setSelectedWallet] = useState<Wallet | null>(null);
+  const [targetWallet, setTargetWallet] = useState<Wallet | null>(null);
+  const [walletPickerMode, setWalletPickerMode] = useState<'FROM' | 'TO'>('FROM');
   const [wallets, setWallets] = useState<Wallet[]>([]);
   const [note, setNote] = useState<string>('');
   const [selectedDate, setSelectedDate] = useState<Date>(new Date());
@@ -118,6 +121,40 @@ export const QuickEntryModal: React.FC<QuickEntryModalProps> = ({
   const [isWalletModalOpen, setIsWalletModalOpen] = useState<boolean>(false);
   const [isCategoryModalOpen, setIsCategoryModalOpen] = useState<boolean>(false);
   const [isRendered, setIsRendered] = useState<boolean>(visible);
+
+  const handleSwapWallets = () => {
+    triggerHaptic();
+    const temp = selectedWallet;
+    setSelectedWallet(targetWallet);
+    setTargetWallet(temp);
+  };
+
+
+  const getTypeColor = (t: TransactionType) => {
+    switch (t) {
+      case 'EXPENSE':
+        return '#F43F5E';
+      case 'INCOME':
+        return '#34D399';
+      case 'TRANSFER':
+        return '#8B5CF6';
+      default:
+        return '#F43F5E';
+    }
+  };
+
+  const getTypeBadgeBg = (t: TransactionType) => {
+    switch (t) {
+      case 'EXPENSE':
+        return 'rgba(244, 63, 94, 0.18)';
+      case 'INCOME':
+        return 'rgba(52, 211, 153, 0.18)';
+      case 'TRANSFER':
+        return 'rgba(139, 92, 246, 0.18)';
+      default:
+        return 'rgba(244, 63, 94, 0.18)';
+    }
+  };
 
   const noteInputRef = useRef<any>(null);
 
@@ -145,8 +182,12 @@ export const QuickEntryModal: React.FC<QuickEntryModalProps> = ({
   useEffect(() => {
     storageService.getWallets().then((list) => {
       setWallets(list);
-      if (list.length > 0 && !selectedWallet) {
-        setSelectedWallet(list[0]);
+      if (list.length > 0) {
+        if (!selectedWallet) setSelectedWallet(list[0]);
+        if (!targetWallet) {
+          const secondWallet = list.find((w) => w.id !== list[0].id) || list[1] || null;
+          setTargetWallet(secondWallet);
+        }
       }
     });
   }, []);
@@ -313,15 +354,117 @@ export const QuickEntryModal: React.FC<QuickEntryModalProps> = ({
       return;
     }
 
-    try {
-      await storageService.addTransaction({
-        date: selectedDate.toISOString(),
-        amount: finalAmount,
-        type,
-        category,
-        wallet: selectedWallet?.name || 'Tiền mặt',
-        note: note.trim() || undefined,
+    if (!selectedWallet) {
+      showPopup({
+        type: 'WARNING',
+        title: 'Chưa chọn ví',
+        message:
+          type === 'TRANSFER'
+            ? 'Vui lòng chọn ví nguồn chuyển tiền'
+            : 'Vui lòng chọn ví để ghi nhận giao dịch',
       });
+      return;
+    }
+
+    if (type === 'TRANSFER') {
+      if (!targetWallet) {
+        showPopup({
+          type: 'WARNING',
+          title: 'Chưa chọn ví nhận',
+          message: 'Vui lòng chọn ví nhận tiền chuyển khoản',
+        });
+        return;
+      }
+      if (selectedWallet.id === targetWallet.id) {
+        showPopup({
+          type: 'WARNING',
+          title: 'Ví không hợp lệ',
+          message: 'Ví nhận không thể trùng với ví chuyển',
+        });
+        return;
+      }
+    }
+
+    try {
+      if (type === 'TRANSFER') {
+        const fromW = selectedWallet;
+        const toW = targetWallet;
+        if (!toW) return;
+
+        // 1. Thêm giao dịch chuyển khoản giữa 2 ví
+        await storageService.addTransaction({
+          date: selectedDate.toISOString(),
+          amount: finalAmount,
+          type: 'TRANSFER',
+          category: 'Chuyển khoản',
+          wallet: fromW.name,
+          toWallet: toW.name,
+          note: note.trim() || undefined,
+        });
+
+        // 2. Cập nhật số dư ví chuyển đi
+        if (fromW.type === 'CREDIT_CARD' || fromW.type === 'PAYLATER') {
+          await storageService.updateWallet({
+            ...fromW,
+            currentBalance: (fromW.currentBalance || 0) + finalAmount,
+          });
+        } else {
+          await storageService.updateWallet({
+            ...fromW,
+            balance: (fromW.balance || 0) - finalAmount,
+          });
+        }
+
+        // 3. Cập nhật số dư ví nhận tiền
+        if (toW.type === 'CREDIT_CARD' || toW.type === 'PAYLATER') {
+          await storageService.updateWallet({
+            ...toW,
+            currentBalance: Math.max((toW.currentBalance || 0) - finalAmount, 0),
+          });
+        } else {
+          await storageService.updateWallet({
+            ...toW,
+            balance: (toW.balance || 0) + finalAmount,
+          });
+        }
+      } else {
+        await storageService.addTransaction({
+          date: selectedDate.toISOString(),
+          amount: finalAmount,
+          type,
+          category,
+          wallet: selectedWallet.name,
+          note: note.trim() || undefined,
+        });
+
+        // Cập nhật số dư ví
+        let newBalance = selectedWallet.balance || 0;
+        if (type === 'EXPENSE') {
+          if (selectedWallet.type === 'CREDIT_CARD' || selectedWallet.type === 'PAYLATER') {
+            await storageService.updateWallet({
+              ...selectedWallet,
+              currentBalance: (selectedWallet.currentBalance || 0) + finalAmount,
+            });
+          } else {
+            await storageService.updateWallet({
+              ...selectedWallet,
+              balance: newBalance - finalAmount,
+            });
+          }
+        } else if (type === 'INCOME') {
+          if (selectedWallet.type === 'CREDIT_CARD' || selectedWallet.type === 'PAYLATER') {
+            await storageService.updateWallet({
+              ...selectedWallet,
+              currentBalance: Math.max((selectedWallet.currentBalance || 0) - finalAmount, 0),
+            });
+          } else {
+            await storageService.updateWallet({
+              ...selectedWallet,
+              balance: newBalance + finalAmount,
+            });
+          }
+        }
+      }
 
       setExpression('0');
       setNote('');
@@ -398,33 +541,119 @@ export const QuickEntryModal: React.FC<QuickEntryModalProps> = ({
               containerStyle={{ marginBottom: 16 }}
             />
 
-            {/* 2. Row: Chọn Ví */}
-            <TouchableOpacity
-              style={styles.formRow}
-              onPress={() => {
-                Keyboard.dismiss();
-                setIsAmountFocused(false);
-                setIsWalletModalOpen(true);
-              }}
-              activeOpacity={0.7}
-            >
-              <View style={styles.rowIconContainer}>
-                {selectedWallet ? (
-                  <WalletLogo
-                    logoId={selectedWallet.logoId || selectedWallet.icon}
-                    icon={selectedWallet.icon}
-                    name={selectedWallet.name}
-                    type={selectedWallet.type}
-                    size={22}
-                  />
-                ) : (
-                  <WalletIcon size={22} color="#94A3B8" />
-                )}
+            {/* 2. Row: Chọn Ví (Đơn lẻ cho Thu/Chi hoặc Kép cho Chuyển khoản) */}
+            {type === 'TRANSFER' ? (
+              <View style={styles.transferWalletGroup}>
+                {/* Ví chuyển đi */}
+                <TouchableOpacity
+                  style={styles.transferWalletRow}
+                  onPress={() => {
+                    Keyboard.dismiss();
+                    setIsAmountFocused(false);
+                    setWalletPickerMode('FROM');
+                    setIsWalletModalOpen(true);
+                  }}
+                  activeOpacity={0.7}
+                >
+                  <View style={styles.rowIconContainer}>
+                    {selectedWallet ? (
+                      <WalletLogo
+                        logoId={selectedWallet.logoId || selectedWallet.icon}
+                        icon={selectedWallet.icon}
+                        name={selectedWallet.name}
+                        type={selectedWallet.type}
+                        size={22}
+                      />
+                    ) : (
+                      <WalletIcon size={22} color="#94A3B8" />
+                    )}
+                  </View>
+                  <View style={styles.transferTextCol}>
+                    <Text style={styles.transferLabel}>Từ ví chuyển đi</Text>
+                    <Text style={styles.rowText}>
+                      {selectedWallet ? selectedWallet.name : 'Chọn ví chuyển'}
+                    </Text>
+                  </View>
+                </TouchableOpacity>
+
+                {/* Vạch chia kèm nút Hoán đổi (Swap) */}
+                <View style={styles.transferDividerWrapper}>
+                  <View style={styles.transferDividerLine} />
+                  <TouchableOpacity
+                    style={styles.transferSwapButton}
+                    onPress={handleSwapWallets}
+                    activeOpacity={0.7}
+                    hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                  >
+                    <ArrowUpDown size={13} color={colors.primaryLight} strokeWidth={2.2} />
+                  </TouchableOpacity>
+                  <View style={styles.transferDividerLine} />
+                </View>
+
+                {/* Ví nhận tiền */}
+                <TouchableOpacity
+                  style={styles.transferWalletRow}
+                  onPress={() => {
+                    Keyboard.dismiss();
+                    setIsAmountFocused(false);
+                    setWalletPickerMode('TO');
+                    setIsWalletModalOpen(true);
+                  }}
+                  activeOpacity={0.7}
+                >
+                  <View style={styles.rowIconContainer}>
+                    {targetWallet ? (
+                      <WalletLogo
+                        logoId={targetWallet.logoId || targetWallet.icon}
+                        icon={targetWallet.icon}
+                        name={targetWallet.name}
+                        type={targetWallet.type}
+                        size={22}
+                      />
+                    ) : (
+                      <WalletIcon size={22} color="#94A3B8" />
+                    )}
+                  </View>
+                  <View style={styles.transferTextCol}>
+                    <Text style={[styles.transferLabel, { color: colors.primaryLight }]}>
+                      Đến ví nhận tiền
+                    </Text>
+                    <Text style={styles.rowText}>
+                      {targetWallet ? targetWallet.name : 'Chọn ví nhận'}
+                    </Text>
+                  </View>
+                </TouchableOpacity>
               </View>
-              <Text style={styles.rowText}>
-                {selectedWallet ? selectedWallet.name : 'Chọn ví'}
-              </Text>
-            </TouchableOpacity>
+            ) : (
+              <TouchableOpacity
+                style={styles.formRow}
+                onPress={() => {
+                  Keyboard.dismiss();
+                  setIsAmountFocused(false);
+                  setWalletPickerMode('FROM');
+                  setIsWalletModalOpen(true);
+                }}
+                activeOpacity={0.7}
+              >
+                <View style={styles.rowIconContainer}>
+                  {selectedWallet ? (
+                    <WalletLogo
+                      logoId={selectedWallet.logoId || selectedWallet.icon}
+                      icon={selectedWallet.icon}
+                      name={selectedWallet.name}
+                      type={selectedWallet.type}
+                      size={22}
+                    />
+                  ) : (
+                    <WalletIcon size={22} color="#94A3B8" />
+                  )}
+                </View>
+                <Text style={styles.rowText}>
+                  {selectedWallet ? selectedWallet.name : 'Chọn ví'}
+                </Text>
+              </TouchableOpacity>
+            )}
+
 
             {/* 3. Row: Ô Số tiền (Active Focus) */}
             <Pressable
@@ -435,8 +664,22 @@ export const QuickEntryModal: React.FC<QuickEntryModalProps> = ({
                 setIsNoteFocused(false);
               }}
             >
-              <View style={[styles.vndBadge, isAmountFocused && styles.vndBadgeFocused]}>
-                <Text style={[styles.vndBadgeText, isAmountFocused && styles.vndBadgeTextFocused]}>
+              <View
+                style={[
+                  styles.vndBadge,
+                  isAmountFocused && {
+                    backgroundColor: getTypeBadgeBg(type),
+                    borderWidth: 1,
+                    borderColor: getTypeColor(type),
+                  },
+                ]}
+              >
+                <Text
+                  style={[
+                    styles.vndBadgeText,
+                    isAmountFocused && { color: getTypeColor(type) },
+                  ]}
+                >
                   VND
                 </Text>
               </View>
@@ -446,10 +689,9 @@ export const QuickEntryModal: React.FC<QuickEntryModalProps> = ({
                   <Text
                     style={[
                       styles.amountText,
-                      isAmountFocused && { color: '#A855F7' },
-                      type === 'EXPENSE' && !isAmountFocused && { color: '#34D399' },
-                      type === 'INCOME' && !isAmountFocused && { color: '#34D399' },
-                      type === 'TRANSFER' && !isAmountFocused && { color: '#8B5CF6' },
+                      type === 'EXPENSE' && { color: '#F43F5E' },
+                      type === 'INCOME' && { color: '#34D399' },
+                      type === 'TRANSFER' && { color: '#8B5CF6' },
                     ]}
                     numberOfLines={1}
                     adjustsFontSizeToFit
@@ -457,43 +699,61 @@ export const QuickEntryModal: React.FC<QuickEntryModalProps> = ({
                     {formatExpressionWithCommas(expression)}
                   </Text>
                   {isAmountFocused && !isNoteFocused && (
-                    <Animated.View style={[styles.blinkingCursor, cursorAnimatedStyle]} />
+                    <Animated.View
+                      style={[
+                        styles.blinkingCursor,
+                        cursorAnimatedStyle,
+                        { backgroundColor: getTypeColor(type) },
+                      ]}
+                    />
                   )}
                 </View>
 
                 <View
                   style={[
                     styles.amountActiveUnderline,
-                    isAmountFocused && styles.amountActiveUnderlineFocused,
-                    type === 'EXPENSE' && !isAmountFocused && { backgroundColor: '#34D399' },
-                    type === 'INCOME' && !isAmountFocused && { backgroundColor: '#34D399' },
-                    type === 'TRANSFER' && !isAmountFocused && { backgroundColor: '#8B5CF6' },
+                    isAmountFocused && { backgroundColor: getTypeColor(type) },
                   ]}
                 />
               </View>
             </Pressable>
 
             {/* 4. Row: Chọn Nhóm (Category) */}
-            <TouchableOpacity
-              style={styles.formRow}
-              onPress={() => {
-                Keyboard.dismiss();
-                setIsAmountFocused(false);
-                setIsCategoryModalOpen(true);
-              }}
-              activeOpacity={0.7}
-            >
-              <View style={styles.rowIconContainer}>
-                <CategoryIcon
-                  category={category}
-                  size={20}
-                  containerSize={36}
-                />
+            {type === 'TRANSFER' ? (
+              <View style={styles.formRow}>
+                <View style={styles.rowIconContainer}>
+                  <CategoryIcon
+                    category="Chuyển khoản"
+                    size={20}
+                    containerSize={36}
+                  />
+                </View>
+                <Text style={[styles.rowText, { color: colors.primaryLight }]}>
+                  Chuyển tiền nội bộ giữa các ví
+                </Text>
               </View>
-              <Text style={styles.rowText}>
-                {category || 'Chọn nhóm'}
-              </Text>
-            </TouchableOpacity>
+            ) : (
+              <TouchableOpacity
+                style={styles.formRow}
+                onPress={() => {
+                  Keyboard.dismiss();
+                  setIsAmountFocused(false);
+                  setIsCategoryModalOpen(true);
+                }}
+                activeOpacity={0.7}
+              >
+                <View style={styles.rowIconContainer}>
+                  <CategoryIcon
+                    category={category}
+                    size={20}
+                    containerSize={36}
+                  />
+                </View>
+                <Text style={styles.rowText}>
+                  {category || 'Chọn nhóm'}
+                </Text>
+              </TouchableOpacity>
+            )}
 
             {/* 5. Row: Thêm ghi chú */}
             <View style={styles.noteRow}>
@@ -503,7 +763,11 @@ export const QuickEntryModal: React.FC<QuickEntryModalProps> = ({
               <TextInput
                 ref={noteInputRef}
                 style={styles.noteTextInput}
-                placeholder="Thêm ghi chú"
+                placeholder={
+                  type === 'TRANSFER'
+                    ? 'Ghi chú (VD: Rút ATM, Nạp ví, Trả nợ thẻ...)'
+                    : 'Thêm ghi chú'
+                }
                 placeholderTextColor="#64748B"
                 value={note}
                 onChangeText={setNote}
@@ -519,6 +783,7 @@ export const QuickEntryModal: React.FC<QuickEntryModalProps> = ({
                 returnKeyType="done"
                 onSubmitEditing={() => Keyboard.dismiss()}
               />
+
               {isNoteFocused && (
                 <TouchableOpacity
                   style={styles.doneTypingBtn}
@@ -600,9 +865,41 @@ export const QuickEntryModal: React.FC<QuickEntryModalProps> = ({
         <WalletSelectModal
           visible={isWalletModalOpen}
           wallets={wallets}
-          selectedWalletName={selectedWallet?.name || ''}
+          title={
+            type === 'TRANSFER'
+              ? walletPickerMode === 'FROM'
+                ? 'Chọn ví chuyển đi'
+                : 'Chọn ví nhận tiền'
+              : 'Chọn Ví'
+          }
+          subtitle={
+            type === 'TRANSFER'
+              ? walletPickerMode === 'FROM'
+                ? 'Số tiền sẽ được trích từ ví này'
+                : 'Số tiền sẽ được chuyển vào ví này'
+              : 'Chọn tài khoản cho giao dịch này'
+          }
+          excludeWalletId={
+            type === 'TRANSFER'
+              ? walletPickerMode === 'FROM'
+                ? targetWallet?.id
+                : selectedWallet?.id
+              : undefined
+          }
+          selectedWalletName={
+            walletPickerMode === 'FROM'
+              ? selectedWallet?.name || ''
+              : targetWallet?.name || ''
+          }
           onClose={() => setIsWalletModalOpen(false)}
-          onSelectWallet={(w) => setSelectedWallet(w)}
+          onSelectWallet={(w) => {
+            if (walletPickerMode === 'FROM') {
+              setSelectedWallet(w);
+            } else {
+              setTargetWallet(w);
+            }
+            setIsWalletModalOpen(false);
+          }}
         />
 
         {/* Modal Chọn Nhóm */}
@@ -690,6 +987,51 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     paddingVertical: 4,
+  },
+  transferWalletGroup: {
+    backgroundColor: 'rgba(255, 255, 255, 0.03)',
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.06)',
+    paddingHorizontal: 12,
+    paddingVertical: 4,
+  },
+  transferWalletRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 8,
+  },
+  transferTextCol: {
+    flex: 1,
+  },
+  transferLabel: {
+    fontSize: 11,
+    color: '#64748B',
+    fontWeight: '500',
+    marginBottom: 2,
+    textTransform: 'uppercase',
+    letterSpacing: 0.3,
+  },
+  transferDividerWrapper: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginVertical: -2,
+  },
+  transferDividerLine: {
+    flex: 1,
+    height: 1,
+    backgroundColor: 'rgba(255, 255, 255, 0.06)',
+  },
+  transferSwapButton: {
+    width: 26,
+    height: 26,
+    borderRadius: 13,
+    backgroundColor: '#1D2132',
+    borderWidth: 1,
+    borderColor: 'rgba(139, 92, 246, 0.3)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginHorizontal: 10,
   },
   rowIconContainer: {
     width: 40,
